@@ -1,0 +1,33 @@
+[camera]
+index = 0
+width = 640
+height = 480
+fps = 60
+detection_confidence = 0.8
+max_hands = 1
+
+[cursor]
+frame_reduction = 120
+smoothing = 4
+mouse_speed = 1.0
+
+[scroll]
+gain = 0.35
+deadzone_px = 2
+max_step = 18
+momentum = 0.22
+decay = 0.92
+
+[gesture]
+click_dist = 15
+scroll_dist = 15
+rclick_dist = 15
+toggle_window_sec = 1.2
+toggle_debounce_sec = 0.10
+
+[ui]
+window_name = "Gesture"
+text_origin_main = [50, 50]
+text_origin_hint = [50, 90]
+text_origin_diag = [10, 20]
+show_diagnostics = true

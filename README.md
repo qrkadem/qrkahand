@@ -56,6 +56,8 @@ python3 mouse.py
 
 Press `q` in the camera window to quit.
 
+The app reads settings from `config.toml` in the project root. If the file is missing, built-in defaults are used.
+
 ## Gestures
 
 The app evaluates gestures in this priority order: clutch, scroll, right click, then movement/left click.
@@ -71,7 +73,25 @@ The app evaluates gestures in this priority order: clutch, scroll, right click, 
 
 ## Tuning Guide
 
-Edit constants near the top of `mouse.py`, then rerun the app.
+Edit values in `config.toml`, then rerun the app.
+
+### Configuration Validation
+
+At startup, configuration values are validated (for example: positive dimensions, smoothing > 0, decay in [0, 1], debounce < toggle window).
+
+If values are invalid, the app exits with a clear configuration error.
+
+### Diagnostics Overlay
+
+The preview window includes a live diagnostics overlay with:
+
+- FPS
+- Camera backend
+- Capture target (resolution/FPS)
+- Current mode (for example `MOVE`, `SCROLL`, `LEFT_DRAG`, `PROGRAM_PAUSED`)
+- Active/paused state
+
+You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 
 ### Camera and Detection
 
@@ -124,6 +144,8 @@ Edit constants near the top of `mouse.py`, then rerun the app.
 | `WINDOW_NAME` | `"Gesture"` | Camera preview window title |
 | `TEXT_ORIGIN_MAIN` | `(50, 50)` | Main status text location |
 | `TEXT_ORIGIN_HINT` | `(50, 90)` | Hint/status text location |
+| `TEXT_ORIGIN_DIAG` | `(10, 20)` | Diagnostics overlay origin |
+| `SHOW_DIAGNOSTICS` | `true` | Toggle on-screen diagnostics overlay |
 
 ### Runtime Setting
 
