@@ -1,5 +1,4 @@
 import math
-import importlib
 import platform
 import time
 from dataclasses import dataclass
@@ -150,33 +149,13 @@ def configure_camera(cam):
         cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
 
 
-def get_virtual_screen_bounds():
-    try:
-        screeninfo = importlib.import_module("screeninfo")
-    except ImportError:
-        screeninfo = None
-
-    if screeninfo is not None:
-        monitors = screeninfo.get_monitors()
-        if monitors:
-            min_x = min(m.x for m in monitors)
-            min_y = min(m.y for m in monitors)
-            max_x = max(m.x + m.width for m in monitors) - 1
-            max_y = max(m.y + m.height for m in monitors) - 1
-            return min_x, min_y, max_x, max_y
-
-    # Fallback for environments where monitor enumeration is unavailable.
-    width, height = pyautogui.size()
-    return 0, 0, width - 1, height - 1
-
-
 def main():
     pyautogui.PAUSE = 0
 
     cam = open_camera(CAMERA_INDEX)
     configure_camera(cam)
 
-    screen_min_x, screen_min_y, screen_max_x, screen_max_y = get_virtual_screen_bounds()
+    screen_width, screen_height = pyautogui.size()
     detector = HandDetector(detectionCon=DETECTION_CONFIDENCE, maxHands=MAX_HANDS)
 
     state = ControllerState()
@@ -285,12 +264,12 @@ def main():
                     mapped_x = np.interp(
                         x_palm,
                         (FRAME_REDUCTION, CAMERA_WIDTH - FRAME_REDUCTION),
-                        (screen_min_x, screen_max_x),
+                        (0, screen_width),
                     )
                     mapped_y = np.interp(
                         y_palm,
                         (FRAME_REDUCTION, CAMERA_HEIGHT - FRAME_REDUCTION),
-                        (screen_min_y, screen_max_y),
+                        (0, screen_height),
                     )
 
                     if state.is_clutched:
@@ -300,13 +279,9 @@ def main():
 
                     target_x = mapped_x + state.offset_x
                     target_y = mapped_y + state.offset_y
-                    target_x = max(screen_min_x, min(screen_max_x, target_x))
-                    target_y = max(screen_min_y, min(screen_max_y, target_y))
 
                     cloc_x = state.ploc_x + ((target_x - state.ploc_x) / CURSOR_SMOOTHING) * MOUSE_SPEED
                     cloc_y = state.ploc_y + ((target_y - state.ploc_y) / CURSOR_SMOOTHING) * MOUSE_SPEED
-                    cloc_x = max(screen_min_x, min(screen_max_x, cloc_x))
-                    cloc_y = max(screen_min_y, min(screen_max_y, cloc_y))
 
                     pyautogui.moveTo(cloc_x, cloc_y)
                     state.ploc_x, state.ploc_y = cloc_x, cloc_y
