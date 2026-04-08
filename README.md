@@ -43,6 +43,25 @@ Press `q` in the camera window to quit.
 
 Tip: change one value at a time so you can feel what each constant does.
 
+## Hand Gesture Guide
+
+Use these gestures with one hand in view. The app evaluates gestures in this order: clutch, scroll, right click, then movement/left click.
+
+| Gesture | How To Do It | What It Does |
+|---|---|---|
+| Cursor move | Keep hand open/neutral (no active pinch) and move your hand | Moves the mouse cursor based on palm position, with smoothing. |
+| Left click / drag | Pinch thumb + index finger (`dist_index < CLICK_DIST`) | Presses and holds left mouse button while pinched (drag). Releasing the pinch releases the button. |
+| Scroll | Pinch thumb + middle finger (`dist_mid < SCROLL_DIST`) and move hand up/down | Enters scroll mode. Vertical middle-finger movement controls scroll direction and speed with deadzone, momentum, and decay. |
+| Right click | Pinch thumb + ring finger (`dist_ring < RCLICK_DIST`) | Performs a right click once per trigger, then waits briefly before allowing another. |
+| Clutch pause | Close hand (all four fingers down) | Temporarily pauses movement and scrolling, and releases any active left-click hold so you can reposition your hand. |
+| Program toggle | Alternate `open -> closed -> open -> closed` quickly (two transitions cycles) | Toggles the whole controller between active and paused states. While paused, no mouse actions are sent until toggled back on. |
+
+Notes:
+
+- Scroll gesture has priority over right click and movement while active.
+- Right click gesture has priority over movement/left click when detected.
+- Press `q` in the camera window to quit at any time.
+
 ## Camera / Tracking Setup
 
 | Constant | Default | What It Controls | Increase To... | Decrease To... |

@@ -2,4 +2,4 @@ opencv-python
 numpy
 pyautogui
 cvzone
-mediapipe
+mediapipe==0.10.14
