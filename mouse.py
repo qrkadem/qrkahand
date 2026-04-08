@@ -3,7 +3,7 @@ import os
 import platform
 import time
 import importlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     import tomllib
@@ -15,44 +15,60 @@ import numpy as np
 import pyautogui
 from cvzone.HandTrackingModule import HandDetector
 
-# --- Camera / tracking setup ---
 CONFIG_FILE = "config.toml"
 
-CAMERA_INDEX = 0
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
-CAMERA_FPS = 60
-DETECTION_CONFIDENCE = 0.8
-MAX_HANDS = 1
 
-# --- Cursor mapping / smoothing ---
-FRAME_REDUCTION = 120
-CURSOR_SMOOTHING = 4
-MOUSE_SPEED = 1.0
+@dataclass
+class CameraConfig:
+    index: int = 0
+    width: int = 640
+    height: int = 480
+    fps: int = 60
+    detection_confidence: float = 0.8
+    max_hands: int = 1
 
-# --- Scroll tuning ---
-SCROLL_GAIN = 0.35
-SCROLL_DEADZONE_PX = 2
-MAX_SCROLL_STEP = 18
-SCROLL_MOMENTUM = 0.22
-SCROLL_DECAY = 0.92
 
-# --- Action thresholds (pixels) ---
-CLICK_DIST = 15
-SCROLL_DIST = 15
-RCLICK_DIST = 15
+@dataclass
+class CursorConfig:
+    frame_reduction: int = 120
+    smoothing: float = 4.0
+    mouse_speed: float = 1.0
 
-# --- Program toggle gesture ---
-# Toggle active/pause by rapidly alternating OPEN <-> CLOSED twice.
-TOGGLE_WINDOW_SEC = 1.2
-TOGGLE_DEBOUNCE_SEC = 0.10
 
-# --- UI labels ---
-WINDOW_NAME = "Gesture"
-TEXT_ORIGIN_MAIN = (50, 50)
-TEXT_ORIGIN_HINT = (50, 90)
-TEXT_ORIGIN_DIAG = (10, 20)
-SHOW_DIAGNOSTICS = True
+@dataclass
+class ScrollConfig:
+    gain: float = 0.35
+    deadzone_px: float = 2.0
+    max_step: float = 18.0
+    momentum: float = 0.22
+    decay: float = 0.92
+
+
+@dataclass
+class GestureConfig:
+    click_dist: float = 15.0
+    scroll_dist: float = 15.0
+    rclick_dist: float = 15.0
+    toggle_window_sec: float = 1.2
+    toggle_debounce_sec: float = 0.10
+
+
+@dataclass
+class UiConfig:
+    window_name: str = "Gesture"
+    text_origin_main: tuple[int, int] = (50, 50)
+    text_origin_hint: tuple[int, int] = (50, 90)
+    text_origin_diag: tuple[int, int] = (10, 20)
+    show_diagnostics: bool = True
+
+
+@dataclass
+class AppConfig:
+    camera: CameraConfig = field(default_factory=CameraConfig)
+    cursor: CursorConfig = field(default_factory=CursorConfig)
+    scroll: ScrollConfig = field(default_factory=ScrollConfig)
+    gesture: GestureConfig = field(default_factory=GestureConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
 
 
 @dataclass
@@ -86,52 +102,57 @@ def _parse_origin(value, name):
     return (int(value[0]), int(value[1]))
 
 
-def validate_settings():
+def validate_settings(cfg):
     errors = []
 
-    if CAMERA_INDEX < 0:
+    camera = cfg.camera
+    cursor = cfg.cursor
+    scroll = cfg.scroll
+    gesture = cfg.gesture
+
+    if camera.index < 0:
         errors.append("CAMERA_INDEX must be >= 0")
-    if CAMERA_WIDTH <= 0:
+    if camera.width <= 0:
         errors.append("CAMERA_WIDTH must be > 0")
-    if CAMERA_HEIGHT <= 0:
+    if camera.height <= 0:
         errors.append("CAMERA_HEIGHT must be > 0")
-    if CAMERA_FPS <= 0:
+    if camera.fps <= 0:
         errors.append("CAMERA_FPS must be > 0")
-    if not (0.0 < DETECTION_CONFIDENCE <= 1.0):
+    if not (0.0 < camera.detection_confidence <= 1.0):
         errors.append("DETECTION_CONFIDENCE must be in (0, 1]")
-    if MAX_HANDS < 1:
+    if camera.max_hands < 1:
         errors.append("MAX_HANDS must be >= 1")
 
-    if FRAME_REDUCTION < 0:
+    if cursor.frame_reduction < 0:
         errors.append("FRAME_REDUCTION must be >= 0")
-    if CURSOR_SMOOTHING <= 0:
+    if cursor.smoothing <= 0:
         errors.append("CURSOR_SMOOTHING must be > 0")
-    if MOUSE_SPEED <= 0:
+    if cursor.mouse_speed <= 0:
         errors.append("MOUSE_SPEED must be > 0")
 
-    if SCROLL_GAIN < 0:
+    if scroll.gain < 0:
         errors.append("SCROLL_GAIN must be >= 0")
-    if SCROLL_DEADZONE_PX < 0:
+    if scroll.deadzone_px < 0:
         errors.append("SCROLL_DEADZONE_PX must be >= 0")
-    if MAX_SCROLL_STEP <= 0:
+    if scroll.max_step <= 0:
         errors.append("MAX_SCROLL_STEP must be > 0")
-    if not (0.0 <= SCROLL_MOMENTUM <= 1.0):
+    if not (0.0 <= scroll.momentum <= 1.0):
         errors.append("SCROLL_MOMENTUM must be in [0, 1]")
-    if not (0.0 <= SCROLL_DECAY <= 1.0):
+    if not (0.0 <= scroll.decay <= 1.0):
         errors.append("SCROLL_DECAY must be in [0, 1]")
 
-    if CLICK_DIST <= 0:
+    if gesture.click_dist <= 0:
         errors.append("CLICK_DIST must be > 0")
-    if SCROLL_DIST <= 0:
+    if gesture.scroll_dist <= 0:
         errors.append("SCROLL_DIST must be > 0")
-    if RCLICK_DIST <= 0:
+    if gesture.rclick_dist <= 0:
         errors.append("RCLICK_DIST must be > 0")
 
-    if TOGGLE_WINDOW_SEC <= 0:
+    if gesture.toggle_window_sec <= 0:
         errors.append("TOGGLE_WINDOW_SEC must be > 0")
-    if TOGGLE_DEBOUNCE_SEC < 0:
+    if gesture.toggle_debounce_sec < 0:
         errors.append("TOGGLE_DEBOUNCE_SEC must be >= 0")
-    if TOGGLE_DEBOUNCE_SEC >= TOGGLE_WINDOW_SEC:
+    if gesture.toggle_debounce_sec >= gesture.toggle_window_sec:
         errors.append("TOGGLE_DEBOUNCE_SEC must be less than TOGGLE_WINDOW_SEC")
 
     if errors:
@@ -139,76 +160,60 @@ def validate_settings():
 
 
 def load_config(config_path=CONFIG_FILE):
-    global CAMERA_INDEX
-    global CAMERA_WIDTH
-    global CAMERA_HEIGHT
-    global CAMERA_FPS
-    global DETECTION_CONFIDENCE
-    global MAX_HANDS
-    global FRAME_REDUCTION
-    global CURSOR_SMOOTHING
-    global MOUSE_SPEED
-    global SCROLL_GAIN
-    global SCROLL_DEADZONE_PX
-    global MAX_SCROLL_STEP
-    global SCROLL_MOMENTUM
-    global SCROLL_DECAY
-    global CLICK_DIST
-    global SCROLL_DIST
-    global RCLICK_DIST
-    global TOGGLE_WINDOW_SEC
-    global TOGGLE_DEBOUNCE_SEC
-    global WINDOW_NAME
-    global TEXT_ORIGIN_MAIN
-    global TEXT_ORIGIN_HINT
-    global TEXT_ORIGIN_DIAG
-    global SHOW_DIAGNOSTICS
+    cfg = AppConfig()
 
     if not os.path.exists(config_path):
-        validate_settings()
-        return
+        validate_settings(cfg)
+        return cfg
 
     with open(config_path, "rb") as f:
         data = tomllib.load(f)
 
     camera = data.get("camera", {})
-    CAMERA_INDEX = int(camera.get("index", CAMERA_INDEX))
-    CAMERA_WIDTH = int(camera.get("width", CAMERA_WIDTH))
-    CAMERA_HEIGHT = int(camera.get("height", CAMERA_HEIGHT))
-    CAMERA_FPS = int(camera.get("fps", CAMERA_FPS))
-    DETECTION_CONFIDENCE = float(camera.get("detection_confidence", DETECTION_CONFIDENCE))
-    MAX_HANDS = int(camera.get("max_hands", MAX_HANDS))
+    cfg.camera.index = int(camera.get("index", cfg.camera.index))
+    cfg.camera.width = int(camera.get("width", cfg.camera.width))
+    cfg.camera.height = int(camera.get("height", cfg.camera.height))
+    cfg.camera.fps = int(camera.get("fps", cfg.camera.fps))
+    cfg.camera.detection_confidence = float(
+        camera.get("detection_confidence", cfg.camera.detection_confidence)
+    )
+    cfg.camera.max_hands = int(camera.get("max_hands", cfg.camera.max_hands))
 
     cursor = data.get("cursor", {})
-    FRAME_REDUCTION = int(cursor.get("frame_reduction", FRAME_REDUCTION))
-    CURSOR_SMOOTHING = float(cursor.get("smoothing", CURSOR_SMOOTHING))
-    MOUSE_SPEED = float(cursor.get("mouse_speed", MOUSE_SPEED))
+    cfg.cursor.frame_reduction = int(cursor.get("frame_reduction", cfg.cursor.frame_reduction))
+    cfg.cursor.smoothing = float(cursor.get("smoothing", cfg.cursor.smoothing))
+    cfg.cursor.mouse_speed = float(cursor.get("mouse_speed", cfg.cursor.mouse_speed))
 
     scroll = data.get("scroll", {})
-    SCROLL_GAIN = float(scroll.get("gain", SCROLL_GAIN))
-    SCROLL_DEADZONE_PX = float(scroll.get("deadzone_px", SCROLL_DEADZONE_PX))
-    MAX_SCROLL_STEP = float(scroll.get("max_step", MAX_SCROLL_STEP))
-    SCROLL_MOMENTUM = float(scroll.get("momentum", SCROLL_MOMENTUM))
-    SCROLL_DECAY = float(scroll.get("decay", SCROLL_DECAY))
+    cfg.scroll.gain = float(scroll.get("gain", cfg.scroll.gain))
+    cfg.scroll.deadzone_px = float(scroll.get("deadzone_px", cfg.scroll.deadzone_px))
+    cfg.scroll.max_step = float(scroll.get("max_step", cfg.scroll.max_step))
+    cfg.scroll.momentum = float(scroll.get("momentum", cfg.scroll.momentum))
+    cfg.scroll.decay = float(scroll.get("decay", cfg.scroll.decay))
 
     gesture = data.get("gesture", {})
-    CLICK_DIST = float(gesture.get("click_dist", CLICK_DIST))
-    SCROLL_DIST = float(gesture.get("scroll_dist", SCROLL_DIST))
-    RCLICK_DIST = float(gesture.get("rclick_dist", RCLICK_DIST))
-    TOGGLE_WINDOW_SEC = float(gesture.get("toggle_window_sec", TOGGLE_WINDOW_SEC))
-    TOGGLE_DEBOUNCE_SEC = float(gesture.get("toggle_debounce_sec", TOGGLE_DEBOUNCE_SEC))
+    cfg.gesture.click_dist = float(gesture.get("click_dist", cfg.gesture.click_dist))
+    cfg.gesture.scroll_dist = float(gesture.get("scroll_dist", cfg.gesture.scroll_dist))
+    cfg.gesture.rclick_dist = float(gesture.get("rclick_dist", cfg.gesture.rclick_dist))
+    cfg.gesture.toggle_window_sec = float(
+        gesture.get("toggle_window_sec", cfg.gesture.toggle_window_sec)
+    )
+    cfg.gesture.toggle_debounce_sec = float(
+        gesture.get("toggle_debounce_sec", cfg.gesture.toggle_debounce_sec)
+    )
 
     ui = data.get("ui", {})
-    WINDOW_NAME = str(ui.get("window_name", WINDOW_NAME))
+    cfg.ui.window_name = str(ui.get("window_name", cfg.ui.window_name))
     if "text_origin_main" in ui:
-        TEXT_ORIGIN_MAIN = _parse_origin(ui["text_origin_main"], "ui.text_origin_main")
+        cfg.ui.text_origin_main = _parse_origin(ui["text_origin_main"], "ui.text_origin_main")
     if "text_origin_hint" in ui:
-        TEXT_ORIGIN_HINT = _parse_origin(ui["text_origin_hint"], "ui.text_origin_hint")
+        cfg.ui.text_origin_hint = _parse_origin(ui["text_origin_hint"], "ui.text_origin_hint")
     if "text_origin_diag" in ui:
-        TEXT_ORIGIN_DIAG = _parse_origin(ui["text_origin_diag"], "ui.text_origin_diag")
-    SHOW_DIAGNOSTICS = bool(ui.get("show_diagnostics", SHOW_DIAGNOSTICS))
+        cfg.ui.text_origin_diag = _parse_origin(ui["text_origin_diag"], "ui.text_origin_diag")
+    cfg.ui.show_diagnostics = bool(ui.get("show_diagnostics", cfg.ui.show_diagnostics))
 
-    validate_settings()
+    validate_settings(cfg)
+    return cfg
 
 
 def classify_hand_pose(fingers):
@@ -219,12 +224,12 @@ def classify_hand_pose(fingers):
     return "neutral"
 
 
-def draw_status(img, text, color, origin=TEXT_ORIGIN_MAIN, scale=1.0, thickness=3):
+def draw_status(img, text, color, origin, scale=1.0, thickness=3):
     cv2.putText(img, text, origin, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness)
 
 
-def draw_diagnostics(img, state):
-    if not SHOW_DIAGNOSTICS:
+def draw_diagnostics(img, state, cfg):
+    if not cfg.ui.show_diagnostics:
         return
 
     lines = [
@@ -234,7 +239,7 @@ def draw_diagnostics(img, state):
         f"Mode: {state.mode_label}",
         f"Active: {'yes' if state.program_active else 'no'}",
     ]
-    x, y = TEXT_ORIGIN_DIAG
+    x, y = cfg.ui.text_origin_diag
     for i, line in enumerate(lines):
         cv2.putText(
             img,
@@ -247,7 +252,7 @@ def draw_diagnostics(img, state):
         )
 
 
-def handle_program_toggle(current_pose, state):
+def handle_program_toggle(current_pose, state, cfg):
     now = time.time()
     if current_pose not in ("open", "closed"):
         return
@@ -255,9 +260,11 @@ def handle_program_toggle(current_pose, state):
     if (
         state.last_hand_pose in ("open", "closed")
         and current_pose != state.last_hand_pose
-        and (now - state.last_toggle_transition_ts) > TOGGLE_DEBOUNCE_SEC
+        and (now - state.last_toggle_transition_ts) > cfg.gesture.toggle_debounce_sec
     ):
-        if state.toggle_transition_count == 0 or (now - state.toggle_window_start) > TOGGLE_WINDOW_SEC:
+        if state.toggle_transition_count == 0 or (
+            (now - state.toggle_window_start) > cfg.gesture.toggle_window_sec
+        ):
             state.toggle_window_start = now
             state.toggle_transition_count = 1
         else:
@@ -307,14 +314,14 @@ def open_camera(camera_index):
     raise RuntimeError("Could not open camera with available backends.")
 
 
-def configure_camera(cam):
+def configure_camera(cam, cfg):
     system = platform.system()
 
     # Common capture settings.
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.camera.width)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.camera.height)
     cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cam.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+    cam.set(cv2.CAP_PROP_FPS, cfg.camera.fps)
 
     if system == "Windows":
         # MJPG often improves FPS and latency on USB webcams in Windows.
@@ -322,14 +329,17 @@ def configure_camera(cam):
 
 
 def main():
-    load_config()
+    cfg = load_config()
     pyautogui.PAUSE = 0
 
-    cam, backend = open_camera(CAMERA_INDEX)
-    configure_camera(cam)
+    cam, backend = open_camera(cfg.camera.index)
+    configure_camera(cam, cfg)
 
     screen_width, screen_height = pyautogui.size()
-    detector = HandDetector(detectionCon=DETECTION_CONFIDENCE, maxHands=MAX_HANDS)
+    detector = HandDetector(
+        detectionCon=cfg.camera.detection_confidence,
+        maxHands=cfg.camera.max_hands,
+    )
 
     state = ControllerState()
     mouse_x, mouse_y = pyautogui.position()
@@ -343,7 +353,7 @@ def main():
         getattr(cv2, "CAP_AVFOUNDATION", -4): "AVFOUNDATION",
         getattr(cv2, "CAP_ANY", -5): "ANY",
     }.get(backend, str(backend))
-    state.capture_label = f"{CAMERA_WIDTH}x{CAMERA_HEIGHT}@{CAMERA_FPS}"
+    state.capture_label = f"{cfg.camera.width}x{cfg.camera.height}@{cfg.camera.fps}"
 
     print("Press 'q' in the camera window to quit.")
 
@@ -384,36 +394,37 @@ def main():
                 cv2.circle(img, (x_palm, y_palm), 8, (255, 255, 255), 2)
 
                 current_pose = classify_hand_pose(fingers)
-                handle_program_toggle(current_pose, state)
+                handle_program_toggle(current_pose, state, cfg)
 
                 if not state.program_active:
                     state.mode_label = "PROGRAM_PAUSED"
-                    draw_status(img, "PROGRAM PAUSED", (0, 0, 255))
+                    draw_status(img, "PROGRAM PAUSED", (0, 0, 255), cfg.ui.text_origin_main)
                     draw_status(
                         img,
                         "Toggle: open/close x2 quickly",
                         (0, 200, 255),
-                        origin=TEXT_ORIGIN_HINT,
+                        origin=cfg.ui.text_origin_hint,
                         scale=0.7,
                         thickness=2,
                     )
-                    cv2.imshow(WINDOW_NAME, img)
+                    draw_diagnostics(img, state, cfg)
+                    cv2.imshow(cfg.ui.window_name, img)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
                     continue
 
                 if current_pose == "closed":
                     state.mode_label = "CLUTCH"
-                    draw_status(img, "PAUSED (CLUTCH)", (0, 0, 255))
+                    draw_status(img, "PAUSED (CLUTCH)", (0, 0, 255), cfg.ui.text_origin_main)
                     if state.is_clicking:
                         pyautogui.mouseUp()
                         state.is_clicking = False
                     state.is_scrolling = False
                     state.is_clutched = True
 
-                elif dist_mid < SCROLL_DIST:
+                elif dist_mid < cfg.gesture.scroll_dist:
                     state.mode_label = "SCROLL"
-                    draw_status(img, "SCROLLING", (255, 255, 0))
+                    draw_status(img, "SCROLLING", (255, 255, 0), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_mid, y_mid), 15, (255, 255, 0), cv2.FILLED)
 
                     if not state.is_scrolling:
@@ -424,27 +435,27 @@ def main():
                         delta_y = state.scroll_anchor_y - y_mid
                         state.scroll_anchor_y = y_mid
 
-                        if abs(delta_y) < SCROLL_DEADZONE_PX:
+                        if abs(delta_y) < cfg.scroll.deadzone_px:
                             target_velocity = 0.0
                         else:
-                            target_velocity = delta_y * SCROLL_GAIN
+                            target_velocity = delta_y * cfg.scroll.gain
 
                         state.scroll_velocity = (
-                            (1.0 - SCROLL_MOMENTUM) * state.scroll_velocity
-                            + SCROLL_MOMENTUM * target_velocity
+                            (1.0 - cfg.scroll.momentum) * state.scroll_velocity
+                            + cfg.scroll.momentum * target_velocity
                         )
-                        state.scroll_velocity *= SCROLL_DECAY
+                        state.scroll_velocity *= cfg.scroll.decay
                         state.scroll_velocity = max(
-                            -MAX_SCROLL_STEP,
-                            min(MAX_SCROLL_STEP, state.scroll_velocity),
+                            -cfg.scroll.max_step,
+                            min(cfg.scroll.max_step, state.scroll_velocity),
                         )
 
                         if abs(state.scroll_velocity) >= 1.0:
                             pyautogui.scroll(int(round(state.scroll_velocity)))
 
-                elif dist_ring < RCLICK_DIST:
+                elif dist_ring < cfg.gesture.rclick_dist:
                     state.mode_label = "RIGHT_CLICK"
-                    draw_status(img, "RIGHT CLICK", (0, 165, 255))
+                    draw_status(img, "RIGHT CLICK", (0, 165, 255), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_ring, y_ring), 15, (0, 165, 255), cv2.FILLED)
 
                     if not state.is_right_clicking:
@@ -460,12 +471,12 @@ def main():
 
                     mapped_x = np.interp(
                         x_palm,
-                        (FRAME_REDUCTION, CAMERA_WIDTH - FRAME_REDUCTION),
+                        (cfg.cursor.frame_reduction, cfg.camera.width - cfg.cursor.frame_reduction),
                         (0, screen_width),
                     )
                     mapped_y = np.interp(
                         y_palm,
-                        (FRAME_REDUCTION, CAMERA_HEIGHT - FRAME_REDUCTION),
+                        (cfg.cursor.frame_reduction, cfg.camera.height - cfg.cursor.frame_reduction),
                         (0, screen_height),
                     )
 
@@ -477,13 +488,17 @@ def main():
                     target_x = mapped_x + state.offset_x
                     target_y = mapped_y + state.offset_y
 
-                    cloc_x = state.ploc_x + ((target_x - state.ploc_x) / CURSOR_SMOOTHING) * MOUSE_SPEED
-                    cloc_y = state.ploc_y + ((target_y - state.ploc_y) / CURSOR_SMOOTHING) * MOUSE_SPEED
+                    cloc_x = state.ploc_x + (
+                        (target_x - state.ploc_x) / cfg.cursor.smoothing
+                    ) * cfg.cursor.mouse_speed
+                    cloc_y = state.ploc_y + (
+                        (target_y - state.ploc_y) / cfg.cursor.smoothing
+                    ) * cfg.cursor.mouse_speed
 
                     pyautogui.moveTo(cloc_x, cloc_y)
                     state.ploc_x, state.ploc_y = cloc_x, cloc_y
 
-                    if dist_index < CLICK_DIST:
+                    if dist_index < cfg.gesture.click_dist:
                         state.mode_label = "LEFT_DRAG"
                         cv2.circle(img, (x_index, y_index), 15, (0, 255, 0), cv2.FILLED)
                         if not state.is_clicking:
@@ -494,9 +509,9 @@ def main():
                             pyautogui.mouseUp()
                             state.is_clicking = False
 
-            draw_diagnostics(img, state)
+            draw_diagnostics(img, state, cfg)
 
-            cv2.imshow(WINDOW_NAME, img)
+            cv2.imshow(cfg.ui.window_name, img)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
