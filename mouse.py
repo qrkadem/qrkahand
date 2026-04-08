@@ -12,6 +12,7 @@ from cvzone.HandTrackingModule import HandDetector
 CAMERA_INDEX = 0
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
+CAMERA_FPS = 60
 DETECTION_CONFIDENCE = 0.8
 MAX_HANDS = 1
 
@@ -116,8 +117,8 @@ def handle_program_toggle(current_pose, state):
 def open_camera(camera_index):
     system = platform.system()
     if system == "Windows":
-        # Prefer DirectShow on Windows, then try MSMF and generic fallback.
-        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+        # Prefer low-latency backends first on Windows.
+        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY, cv2.CAP_MSMF]
     elif system == "Linux":
         backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
     elif system == "Darwin":
@@ -134,13 +135,25 @@ def open_camera(camera_index):
     raise RuntimeError("Could not open camera with available backends.")
 
 
+def configure_camera(cam):
+    system = platform.system()
+
+    # Common capture settings.
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cam.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+
+    if system == "Windows":
+        # MJPG often improves FPS and latency on USB webcams in Windows.
+        cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
+
+
 def main():
     pyautogui.PAUSE = 0
 
     cam = open_camera(CAMERA_INDEX)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    configure_camera(cam)
 
     screen_width, screen_height = pyautogui.size()
     detector = HandDetector(detectionCon=DETECTION_CONFIDENCE, maxHands=MAX_HANDS)

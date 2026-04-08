@@ -80,6 +80,7 @@ Edit constants near the top of `mouse.py`, then rerun the app.
 | `CAMERA_INDEX` | `0` | Camera device ID | Use another camera (`1`, `2`, ...) | Use primary camera |
 | `CAMERA_WIDTH` | `640` | Capture width | Improve detail (higher CPU) | Reduce CPU and latency |
 | `CAMERA_HEIGHT` | `480` | Capture height | Improve detail (higher CPU) | Reduce CPU and latency |
+| `CAMERA_FPS` | `60` | Target camera FPS hint | Request faster updates (if camera supports it) | Reduce CPU use |
 | `DETECTION_CONFIDENCE` | `0.8` | Hand detection threshold | Reduce false positives | Detect more aggressively |
 | `MAX_HANDS` | `1` | Hands tracked | Track both hands | Keep behavior stable/simple |
 
@@ -165,6 +166,10 @@ Edit constants near the top of `mouse.py`, then rerun the app.
   - Lower `SCROLL_GAIN`.
   - Lower `SCROLL_MOMENTUM`.
   - Lower `SCROLL_DECAY`.
+- Windows update rate feels slow:
+  - Lower `CAMERA_WIDTH`/`CAMERA_HEIGHT`.
+  - Keep `CAMERA_FPS` at `60` (or try `30` if your camera is unstable).
+  - Try a different `CAMERA_INDEX`.
 - Gestures trigger too easily:
   - Lower `CLICK_DIST`, `SCROLL_DIST`, and `RCLICK_DIST`.
   - Raise `TOGGLE_DEBOUNCE_SEC` if toggle false-triggers.
