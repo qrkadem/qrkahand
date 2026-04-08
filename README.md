@@ -78,6 +78,7 @@ Notes:
 | --- | ---: | --- | --- | --- |
 | `FRAME_REDUCTION` | `120` | Dead border around camera frame used for mapping to screen. | Add margin and reduce edge jitter. | Use more of camera frame area. |
 | `CURSOR_SMOOTHING` | `4` | Cursor interpolation smoothing factor. | Make movement smoother/slower. | Make movement quicker/snappier. |
+| `MOUSE_SPEED` | `1.0` | Overall cursor speed multiplier after smoothing. | Make cursor move faster for the same hand movement. | Make cursor move slower/finer. |
 
 ## Scroll Tuning
 
@@ -146,6 +147,9 @@ The app toggles active/pause when it sees fast open/close transitions twice in q
 - Cursor feels jumpy:
   - Increase `CURSOR_SMOOTHING`.
   - Increase `FRAME_REDUCTION` slightly.
+- Cursor feels too fast or too slow:
+  - Increase `MOUSE_SPEED` to speed up.
+  - Decrease `MOUSE_SPEED` to slow down.
 - Scroll starts too suddenly:
   - Lower `SCROLL_GAIN`.
   - Lower `SCROLL_MOMENTUM`.

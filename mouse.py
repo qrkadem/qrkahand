@@ -17,6 +17,7 @@ MAX_HANDS = 1
 # --- Cursor mapping / smoothing ---
 FRAME_REDUCTION = 120
 CURSOR_SMOOTHING = 4
+MOUSE_SPEED = 1.0
 
 # --- Scroll tuning ---
 SCROLL_GAIN = 0.35
@@ -244,8 +245,8 @@ def main():
                     target_x = mapped_x + state.offset_x
                     target_y = mapped_y + state.offset_y
 
-                    cloc_x = state.ploc_x + (target_x - state.ploc_x) / CURSOR_SMOOTHING
-                    cloc_y = state.ploc_y + (target_y - state.ploc_y) / CURSOR_SMOOTHING
+                    cloc_x = state.ploc_x + ((target_x - state.ploc_x) / CURSOR_SMOOTHING) * MOUSE_SPEED
+                    cloc_y = state.ploc_y + ((target_y - state.ploc_y) / CURSOR_SMOOTHING) * MOUSE_SPEED
 
                     pyautogui.moveTo(cloc_x, cloc_y)
                     state.ploc_x, state.ploc_y = cloc_x, cloc_y
