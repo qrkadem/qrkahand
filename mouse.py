@@ -1,4 +1,5 @@
 import math
+import platform
 import time
 from dataclasses import dataclass
 
@@ -112,10 +113,31 @@ def handle_program_toggle(current_pose, state):
     state.last_hand_pose = current_pose
 
 
+def open_camera(camera_index):
+    system = platform.system()
+    if system == "Windows":
+        # Prefer DirectShow on Windows, then try MSMF and generic fallback.
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+    elif system == "Linux":
+        backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
+    elif system == "Darwin":
+        backends = [cv2.CAP_AVFOUNDATION, cv2.CAP_ANY]
+    else:
+        backends = [cv2.CAP_ANY]
+
+    for backend in backends:
+        cam = cv2.VideoCapture(camera_index, backend)
+        if cam.isOpened():
+            return cam
+        cam.release()
+
+    raise RuntimeError("Could not open camera with available backends.")
+
+
 def main():
     pyautogui.PAUSE = 0
 
-    cam = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+    cam = open_camera(CAMERA_INDEX)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
     cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)

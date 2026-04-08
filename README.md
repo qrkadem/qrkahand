@@ -18,6 +18,7 @@ The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to c
 - Python 3.9+
 - Webcam
 - Linux note: some systems need `python3-tk` and `scrot`
+- Windows note: no extra system packages are typically required
 
 ## Setup
 
@@ -41,6 +42,11 @@ pip install -r requirements.txt
 sudo apt update
 sudo apt install -y python3-tk scrot
 ```
+
+### 4. Windows notes
+
+- Camera backend selection is automatic on Windows (DirectShow/MSMF fallback).
+- If the wrong camera opens, change `CAMERA_INDEX` in `mouse.py`.
 
 ## Run
 
