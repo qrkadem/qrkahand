@@ -3,3 +3,4 @@ numpy
 pyautogui
 cvzone
 mediapipe==0.10.14
+screeninfo
