@@ -1,8 +1,25 @@
-# qrkahand Configuration Reference
+# qrkahand: Hand Gesture Mouse Controller
 
-This document explains every tunable constant in `mouse.py` and how each value affects behavior.
+Control your mouse with hand gestures using a webcam.
 
-## Installation
+The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to cursor movement, and supports gesture-based click, right-click, scroll, clutch, and pause toggle.
+
+## What This Project Does
+
+- Moves cursor from palm motion
+- Left-clicks and drags with thumb-index pinch
+- Scrolls with thumb-middle pinch and vertical movement
+- Right-clicks with thumb-ring pinch
+- Supports clutch mode for hand repositioning
+- Toggles full controller active/paused with quick open-close transitions
+
+## Requirements
+
+- Python 3.9+
+- Webcam
+- Linux note: some systems need `python3-tk` and `scrot`
+
+## Setup
 
 ### 1. Create and activate a virtual environment
 
@@ -11,23 +28,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2. Install Python dependencies
+### 2. Install dependencies
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Linux prerequisites (recommended)
-
-Some Linux setups need extra system packages for OpenCV and PyAutoGUI integrations:
+### 3. Optional Linux packages
 
 ```bash
 sudo apt update
 sudo apt install -y python3-tk scrot
 ```
 
-### 4. Run the app
+## Run
 
 ```bash
 python3 mouse.py
@@ -35,96 +50,85 @@ python3 mouse.py
 
 Press `q` in the camera window to quit.
 
-## Quick Start
+## Gestures
 
-1. Open `mouse.py`.
-2. Edit the constants near the top of the file.
-3. Re-run the script and test.
+The app evaluates gestures in this priority order: clutch, scroll, right click, then movement/left click.
 
-Tip: change one value at a time so you can feel what each constant does.
-
-## Hand Gesture Guide
-
-Use these gestures with one hand in view. The app evaluates gestures in this order: clutch, scroll, right click, then movement/left click.
-
-| Gesture | How To Do It | What It Does |
+| Gesture | How to do it | Result |
 | --- | --- | --- |
-| Cursor move | Keep hand open/neutral (no active pinch) and move your hand | Moves the mouse cursor based on palm position, with smoothing. |
-| Left click / drag | Pinch thumb + index finger (`dist_index < CLICK_DIST`) | Presses and holds left mouse button while pinched (drag). Releasing the pinch releases the button. |
-| Scroll | Pinch thumb + middle finger (`dist_mid < SCROLL_DIST`) and move hand up/down | Enters scroll mode. Vertical middle-finger movement controls scroll direction and speed with deadzone, momentum, and decay. |
-| Right click | Pinch thumb + ring finger (`dist_ring < RCLICK_DIST`) | Performs a right click once per trigger, then waits briefly before allowing another. |
-| Clutch pause | Close hand (all four fingers down) | Temporarily pauses movement and scrolling, and releases any active left-click hold so you can reposition your hand. |
-| Program toggle | Alternate `open -> closed -> open -> closed` quickly (two transition cycles) | Toggles the whole controller between active and paused states. While paused, no mouse actions are sent until toggled back on. |
+| Move cursor | Keep hand open/neutral and move hand | Moves cursor from palm position with smoothing and speed scaling |
+| Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched; release pinch to release button |
+| Scroll | Pinch thumb + middle (`dist_mid < SCROLL_DIST`), move hand up/down | Enters scroll mode; vertical motion controls direction and speed |
+| Right click | Pinch thumb + ring (`dist_ring < RCLICK_DIST`) | Triggers right click (rate-limited briefly) |
+| Clutch | Close hand (fingers down) | Pauses movement/scroll and releases active left drag so hand can reposition |
+| Toggle app active/paused | Alternate `open -> closed -> open -> closed` quickly | Enables or pauses all mouse actions |
 
-Notes:
+## Tuning Guide
 
-- Scroll gesture has priority over right click and movement while active.
-- Right click gesture has priority over movement/left click when detected.
-- Press `q` in the camera window to quit at any time.
+Edit constants near the top of `mouse.py`, then rerun the app.
 
-## Camera / Tracking Setup
+### Camera and Detection
 
-| Constant | Default | What It Controls | Increase To... | Decrease To... |
+| Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `CAMERA_INDEX` | `0` | Which camera device to open. | Select another camera (`1`, `2`, etc.). | Use the primary camera. |
-| `CAMERA_WIDTH` | `640` | Capture width in pixels. | Get more detail (may use more CPU). | Reduce CPU usage / latency. |
-| `CAMERA_HEIGHT` | `480` | Capture height in pixels. | Get more detail (may use more CPU). | Reduce CPU usage / latency. |
-| `DETECTION_CONFIDENCE` | `0.8` | Hand detector confidence threshold. | Reduce false positives. | Detect hands more aggressively. |
-| `MAX_HANDS` | `1` | Max hands tracked. | Track both hands if needed. | Keep single-hand behavior stable. |
+| `CAMERA_INDEX` | `0` | Camera device ID | Use another camera (`1`, `2`, ...) | Use primary camera |
+| `CAMERA_WIDTH` | `640` | Capture width | Improve detail (higher CPU) | Reduce CPU and latency |
+| `CAMERA_HEIGHT` | `480` | Capture height | Improve detail (higher CPU) | Reduce CPU and latency |
+| `DETECTION_CONFIDENCE` | `0.8` | Hand detection threshold | Reduce false positives | Detect more aggressively |
+| `MAX_HANDS` | `1` | Hands tracked | Track both hands | Keep behavior stable/simple |
 
-## Cursor Mapping / Smoothing
+### Cursor Movement
 
-| Constant | Default | What It Controls | Increase To... | Decrease To... |
+| Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `FRAME_REDUCTION` | `120` | Dead border around camera frame used for mapping to screen. | Add margin and reduce edge jitter. | Use more of camera frame area. |
-| `CURSOR_SMOOTHING` | `4` | Cursor interpolation smoothing factor. | Make movement smoother/slower. | Make movement quicker/snappier. |
-| `MOUSE_SPEED` | `1.0` | Overall cursor speed multiplier after smoothing. | Make cursor move faster for the same hand movement. | Make cursor move slower/finer. |
+| `FRAME_REDUCTION` | `120` | Mapping margin around frame edges | Reduce edge jitter | Use more frame area |
+| `CURSOR_SMOOTHING` | `4` | Cursor interpolation smoothing | Smooth/slower movement | Faster/snappier movement |
+| `MOUSE_SPEED` | `1.0` | Speed multiplier after smoothing | Increase overall cursor speed | Decrease overall cursor speed |
 
-## Scroll Tuning
+### Scroll Behavior
 
-| Constant | Default | What It Controls | Increase To... | Decrease To... |
+| Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `SCROLL_GAIN` | `0.35` | Base multiplier from finger motion to scroll velocity. | Scroll faster per hand motion. | Scroll slower / finer control. |
-| `SCROLL_DEADZONE_PX` | `2` | Small motion ignored while scrolling. | Filter more tiny jitter. | React to very small movement. |
-| `MAX_SCROLL_STEP` | `18` | Max per-frame scroll step (speed cap). | Allow faster peak scrolling. | Prevent big scroll bursts. |
-| `SCROLL_MOMENTUM` | `0.22` | How fast velocity follows target velocity. | More responsive / punchy. | More gradual acceleration. |
-| `SCROLL_DECAY` | `0.92` | Per-frame damping of scroll velocity. | Keep momentum longer (more glide). | Stop momentum quicker. |
+| `SCROLL_GAIN` | `0.35` | Base scroll sensitivity | Scroll faster | Scroll slower/finer |
+| `SCROLL_DEADZONE_PX` | `2` | Ignore tiny vertical movement | Filter more jitter | React to tiny movement |
+| `MAX_SCROLL_STEP` | `18` | Per-frame scroll cap | Allow faster peak scroll | Prevent large bursts |
+| `SCROLL_MOMENTUM` | `0.22` | How fast velocity follows target | Make scroll more responsive | Make acceleration gentler |
+| `SCROLL_DECAY` | `0.92` | Per-frame velocity damping | Keep glide longer | Stop scrolling sooner |
 
-## Gesture Thresholds (Pixels)
+### Gesture Thresholds
 
-| Constant | Default | What It Controls | Increase To... | Decrease To... |
+| Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `CLICK_DIST` | `15` | Thumb-index pinch distance for left click/drag. | Make click easier to trigger. | Require tighter pinch. |
-| `SCROLL_DIST` | `15` | Thumb-middle pinch distance to enter scroll mode. | Make scrolling easier to trigger. | Require tighter pinch. |
-| `RCLICK_DIST` | `15` | Thumb-ring pinch distance to right click. | Make right click easier to trigger. | Require tighter pinch. |
+| `CLICK_DIST` | `15` | Thumb-index pinch threshold | Make click easier to trigger | Require tighter pinch |
+| `SCROLL_DIST` | `15` | Thumb-middle pinch threshold | Make scroll easier to trigger | Require tighter pinch |
+| `RCLICK_DIST` | `15` | Thumb-ring pinch threshold | Make right click easier to trigger | Require tighter pinch |
 
-## Program Toggle Gesture
+### Toggle Timing
 
-The app toggles active/pause when it sees fast open/close transitions twice in quick succession.
-
-| Constant | Default | What It Controls | Increase To... | Decrease To... |
+| Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `TOGGLE_WINDOW_SEC` | `1.2` | Time window to complete toggle transitions. | Make toggle easier/slower paced. | Require faster toggle gesture. |
-| `TOGGLE_DEBOUNCE_SEC` | `0.10` | Minimum time between accepted transitions. | Reduce accidental toggles from noisy flips. | Accept very fast transitions. |
+| `TOGGLE_WINDOW_SEC` | `1.2` | Time allowed for toggle transitions | Make toggle easier/slower | Require faster toggles |
+| `TOGGLE_DEBOUNCE_SEC` | `0.10` | Minimum time between transitions | Prevent accidental toggles | Accept faster transitions |
 
-## UI Labels
+### UI Constants
 
-| Constant | Default | What It Controls |
+| Constant | Default | Purpose |
 | --- | --- | --- |
-| `WINDOW_NAME` | `"Gesture"` | OpenCV display window title. |
-| `TEXT_ORIGIN_MAIN` | `(50, 50)` | Main status text position. |
-| `TEXT_ORIGIN_HINT` | `(50, 90)` | Secondary hint text position. |
+| `WINDOW_NAME` | `"Gesture"` | Camera preview window title |
+| `TEXT_ORIGIN_MAIN` | `(50, 50)` | Main status text location |
+| `TEXT_ORIGIN_HINT` | `(50, 90)` | Hint/status text location |
 
-## Runtime Setting (Not a constant)
+### Runtime Setting
 
 - `pyautogui.PAUSE = 0`
-  - Disables PyAutoGUI’s automatic pause between actions for lower latency.
+  - Removes automatic delay between PyAutoGUI actions for lower latency.
 
 ## Suggested Presets
 
-### Smoother / Safer
+### Smooth and Stable
 
 - `CURSOR_SMOOTHING = 5`
+- `MOUSE_SPEED = 0.9`
 - `SCROLL_GAIN = 0.28`
 - `SCROLL_MOMENTUM = 0.18`
 - `SCROLL_DECAY = 0.90`
@@ -132,9 +136,10 @@ The app toggles active/pause when it sees fast open/close transitions twice in q
 - `SCROLL_DIST = 14`
 - `RCLICK_DIST = 14`
 
-### Faster / More Responsive
+### Fast and Responsive
 
 - `CURSOR_SMOOTHING = 3`
+- `MOUSE_SPEED = 1.15`
 - `SCROLL_GAIN = 0.45`
 - `SCROLL_MOMENTUM = 0.28`
 - `SCROLL_DECAY = 0.94`
@@ -144,19 +149,19 @@ The app toggles active/pause when it sees fast open/close transitions twice in q
 
 ## Troubleshooting
 
-- Cursor feels jumpy:
+- Cursor is jumpy:
   - Increase `CURSOR_SMOOTHING`.
   - Increase `FRAME_REDUCTION` slightly.
-- Cursor feels too fast or too slow:
-  - Increase `MOUSE_SPEED` to speed up.
-  - Decrease `MOUSE_SPEED` to slow down.
-- Scroll starts too suddenly:
+- Cursor is too fast or too slow:
+  - Raise `MOUSE_SPEED` to speed up.
+  - Lower `MOUSE_SPEED` to slow down.
+- Scroll starts too aggressively:
   - Lower `SCROLL_GAIN`.
   - Lower `SCROLL_MOMENTUM`.
   - Lower `SCROLL_DECAY`.
 - Gestures trigger too easily:
-  - Lower pinch thresholds (`CLICK_DIST`, `SCROLL_DIST`, `RCLICK_DIST`).
-  - Increase `TOGGLE_DEBOUNCE_SEC` if pause toggle false-triggers.
-- Toggle is hard to trigger:
-  - Increase `TOGGLE_WINDOW_SEC`.
-  - Reduce `TOGGLE_DEBOUNCE_SEC` slightly.
+  - Lower `CLICK_DIST`, `SCROLL_DIST`, and `RCLICK_DIST`.
+  - Raise `TOGGLE_DEBOUNCE_SEC` if toggle false-triggers.
+- Toggle gesture is hard to trigger:
+  - Raise `TOGGLE_WINDOW_SEC`.
+  - Lower `TOGGLE_DEBOUNCE_SEC` slightly.
