@@ -22,6 +22,7 @@ decay = 0.92
 click_dist = 15
 scroll_dist = 15
 rclick_dist = 15
+drag_unlock_margin_px = 22
 toggle_window_sec = 1.2
 toggle_debounce_sec = 0.10
 

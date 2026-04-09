@@ -65,7 +65,7 @@ The app evaluates gestures in this priority order: clutch, scroll, right click, 
 | Gesture | How to do it | Result |
 | --- | --- | --- |
 | Move cursor | Keep hand open/neutral and move hand | Moves cursor from palm position with smoothing and speed scaling |
-| Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched; release pinch to release button |
+| Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched. Cursor stays still inside a margin box around pinch start, then starts dragging after hand exits the box. |
 | Scroll | Pinch thumb + middle (`dist_mid < SCROLL_DIST`), move hand up/down | Enters scroll mode; vertical motion controls direction and speed |
 | Right click | Pinch thumb + ring (`dist_ring < RCLICK_DIST`) | Triggers right click (rate-limited briefly) |
 | Clutch | Close hand (fingers down) | Pauses movement/scroll and releases active left drag so hand can reposition |
@@ -129,6 +129,7 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 | `CLICK_DIST` | `15` | Thumb-index pinch threshold | Make click easier to trigger | Require tighter pinch |
 | `SCROLL_DIST` | `15` | Thumb-middle pinch threshold | Make scroll easier to trigger | Require tighter pinch |
 | `RCLICK_DIST` | `15` | Thumb-ring pinch threshold | Make right click easier to trigger | Require tighter pinch |
+| `DRAG_UNLOCK_MARGIN_PX` | `22` | Half-size of the drag unlock box in camera pixels | Require larger motion before drag starts | Start dragging sooner after pinch |
 
 ### Toggle Timing
 

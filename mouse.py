@@ -49,6 +49,7 @@ class GestureConfig:
     click_dist: float = 15.0
     scroll_dist: float = 15.0
     rclick_dist: float = 15.0
+    drag_unlock_margin_px: float = 22.0
     toggle_window_sec: float = 1.2
     toggle_debounce_sec: float = 0.10
 
@@ -94,6 +95,9 @@ class ControllerState:
     backend_name: str = "unknown"
     capture_label: str = "unknown"
     mode_label: str = "NO_HAND"
+    drag_anchor_x: float = 0.0
+    drag_anchor_y: float = 0.0
+    drag_unlocked: bool = True
 
 
 def _parse_origin(value, name):
@@ -147,6 +151,8 @@ def validate_settings(cfg):
         errors.append("SCROLL_DIST must be > 0")
     if gesture.rclick_dist <= 0:
         errors.append("RCLICK_DIST must be > 0")
+    if gesture.drag_unlock_margin_px < 0:
+        errors.append("DRAG_UNLOCK_MARGIN_PX must be >= 0")
 
     if gesture.toggle_window_sec <= 0:
         errors.append("TOGGLE_WINDOW_SEC must be > 0")
@@ -195,6 +201,9 @@ def load_config(config_path=CONFIG_FILE):
     cfg.gesture.click_dist = float(gesture.get("click_dist", cfg.gesture.click_dist))
     cfg.gesture.scroll_dist = float(gesture.get("scroll_dist", cfg.gesture.scroll_dist))
     cfg.gesture.rclick_dist = float(gesture.get("rclick_dist", cfg.gesture.rclick_dist))
+    cfg.gesture.drag_unlock_margin_px = float(
+        gesture.get("drag_unlock_margin_px", cfg.gesture.drag_unlock_margin_px)
+    )
     cfg.gesture.toggle_window_sec = float(
         gesture.get("toggle_window_sec", cfg.gesture.toggle_window_sec)
     )
@@ -469,6 +478,8 @@ def main():
                     state.scroll_velocity = 0.0
                     state.is_right_clicking = False
 
+                    is_left_pinched = dist_index < cfg.gesture.click_dist
+
                     mapped_x = np.interp(
                         x_palm,
                         (cfg.cursor.frame_reduction, cfg.camera.width - cfg.cursor.frame_reduction),
@@ -488,26 +499,77 @@ def main():
                     target_x = mapped_x + state.offset_x
                     target_y = mapped_y + state.offset_y
 
-                    cloc_x = state.ploc_x + (
-                        (target_x - state.ploc_x) / cfg.cursor.smoothing
-                    ) * cfg.cursor.mouse_speed
-                    cloc_y = state.ploc_y + (
-                        (target_y - state.ploc_y) / cfg.cursor.smoothing
-                    ) * cfg.cursor.mouse_speed
-
-                    pyautogui.moveTo(cloc_x, cloc_y)
-                    state.ploc_x, state.ploc_y = cloc_x, cloc_y
-
-                    if dist_index < cfg.gesture.click_dist:
+                    if is_left_pinched:
                         state.mode_label = "LEFT_DRAG"
                         cv2.circle(img, (x_index, y_index), 15, (0, 255, 0), cv2.FILLED)
+
                         if not state.is_clicking:
                             pyautogui.mouseDown()
                             state.is_clicking = True
+                            # Zero smoothing carryover so click/drag starts without glide.
+                            cur_x, cur_y = pyautogui.position()
+                            state.ploc_x = float(cur_x)
+                            state.ploc_y = float(cur_y)
+                            state.offset_x = state.ploc_x - mapped_x
+                            state.offset_y = state.ploc_y - mapped_y
+                            target_x = mapped_x + state.offset_x
+                            target_y = mapped_y + state.offset_y
+                            state.drag_anchor_x = x_palm
+                            state.drag_anchor_y = y_palm
+                            state.drag_unlocked = False
+
+                        margin = cfg.gesture.drag_unlock_margin_px
+                        in_margin = (
+                            abs(x_palm - state.drag_anchor_x) <= margin
+                            and abs(y_palm - state.drag_anchor_y) <= margin
+                        )
+
+                        if state.drag_unlocked or not in_margin:
+                            state.drag_unlocked = True
+                            cloc_x = state.ploc_x + (
+                                (target_x - state.ploc_x) / cfg.cursor.smoothing
+                            ) * cfg.cursor.mouse_speed
+                            cloc_y = state.ploc_y + (
+                                (target_y - state.ploc_y) / cfg.cursor.smoothing
+                            ) * cfg.cursor.mouse_speed
+                            pyautogui.moveTo(cloc_x, cloc_y)
+                            state.ploc_x, state.ploc_y = cloc_x, cloc_y
+                        else:
+                            state.mode_label = "LEFT_HOLD"
+
+                        left = int(max(0, state.drag_anchor_x - margin))
+                        top = int(max(0, state.drag_anchor_y - margin))
+                        right = int(min(cfg.camera.width - 1, state.drag_anchor_x + margin))
+                        bottom = int(min(cfg.camera.height - 1, state.drag_anchor_y + margin))
+                        box_color = (0, 255, 255) if not state.drag_unlocked else (0, 200, 0)
+                        cv2.rectangle(img, (left, top), (right, bottom), box_color, 2)
+                        cv2.circle(
+                            img,
+                            (int(state.drag_anchor_x), int(state.drag_anchor_y)),
+                            3,
+                            box_color,
+                            cv2.FILLED,
+                        )
                     else:
+                        just_released_click = False
                         if state.is_clicking:
                             pyautogui.mouseUp()
                             state.is_clicking = False
+                            # Re-anchor mapping at release so smoothing does not rebound.
+                            state.offset_x = state.ploc_x - mapped_x
+                            state.offset_y = state.ploc_y - mapped_y
+                            just_released_click = True
+                        state.drag_unlocked = True
+
+                        if not just_released_click:
+                            cloc_x = state.ploc_x + (
+                                (target_x - state.ploc_x) / cfg.cursor.smoothing
+                            ) * cfg.cursor.mouse_speed
+                            cloc_y = state.ploc_y + (
+                                (target_y - state.ploc_y) / cfg.cursor.smoothing
+                            ) * cfg.cursor.mouse_speed
+                            pyautogui.moveTo(cloc_x, cloc_y)
+                            state.ploc_x, state.ploc_y = cloc_x, cloc_y
 
             draw_diagnostics(img, state, cfg)
 
