@@ -56,7 +56,7 @@ class GestureConfig:
 
 @dataclass
 class UiConfig:
-    window_name: str = "Gesture"
+    window_name: str = "qrkahand"
     text_origin_main: tuple[int, int] = (50, 50)
     text_origin_hint: tuple[int, int] = (50, 90)
     text_origin_diag: tuple[int, int] = (10, 20)
@@ -81,6 +81,7 @@ class ControllerState:
     offset_x: float = 0.0
     offset_y: float = 0.0
     scroll_anchor_y: float = 0.0
+    scroll_visual_anchor_y: float = 0.0
     scroll_velocity: float = 0.0
     program_active: bool = True
     last_hand_pose: str = "unknown"
@@ -439,10 +440,12 @@ def main():
                     if not state.is_scrolling:
                         state.is_scrolling = True
                         state.scroll_anchor_y = y_mid
+                        state.scroll_visual_anchor_y = y_mid
                         state.scroll_velocity = 0.0
                     else:
-                        delta_y = state.scroll_anchor_y - y_mid
-                        state.scroll_anchor_y = y_mid
+                        # Use displacement from fixed scroll-start anchor so the
+                        # guide lines match the actual scroll control logic.
+                        delta_y = state.scroll_visual_anchor_y - y_mid
 
                         if abs(delta_y) < cfg.scroll.deadzone_px:
                             target_velocity = 0.0
@@ -461,6 +464,16 @@ def main():
 
                         if abs(state.scroll_velocity) >= 1.0:
                             pyautogui.scroll(int(round(state.scroll_velocity)))
+
+                    # Draw deadzone bounds around a fixed anchor captured at scroll start.
+                    deadzone_vis = max(6.0, cfg.scroll.deadzone_px)
+                    anchor_y = state.scroll_visual_anchor_y
+                    upper_y = int(max(0, anchor_y - deadzone_vis))
+                    lower_y = int(min(cfg.camera.height - 1, anchor_y + deadzone_vis))
+                    center_y = int(y_mid)
+                    cv2.line(img, (0, upper_y), (cfg.camera.width - 1, upper_y), (0, 200, 255), 1)
+                    cv2.line(img, (0, center_y), (cfg.camera.width - 1, center_y), (255, 255, 255), 1)
+                    cv2.line(img, (0, lower_y), (cfg.camera.width - 1, lower_y), (0, 200, 255), 1)
 
                 elif dist_ring < cfg.gesture.rclick_dist:
                     state.mode_label = "RIGHT_CLICK"
