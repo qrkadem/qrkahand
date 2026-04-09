@@ -13,21 +13,21 @@ mouse_speed = 1.0
 
 [scroll]
 gain = 0.35
-deadzone_px = 2
+deadzone_px = 4
 max_step = 18
 momentum = 0.22
 decay = 0.92
 
 [gesture]
 click_dist = 15
-scroll_dist = 15
+scroll_dist = 25
 rclick_dist = 15
 drag_unlock_margin_px = 22
 toggle_window_sec = 1.2
 toggle_debounce_sec = 0.10
 
 [ui]
-window_name = "Gesture"
+window_name = "qrkahand"
 text_origin_main = [50, 50]
 text_origin_hint = [50, 90]
 text_origin_diag = [10, 20]
