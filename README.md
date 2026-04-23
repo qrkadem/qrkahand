@@ -15,7 +15,7 @@ The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to c
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12! **REQUIRED**
 - Webcam
 - Linux note: some systems need `python3-tk` and `scrot`
 - Windows note: no extra system packages are typically required
