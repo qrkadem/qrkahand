@@ -2,5 +2,5 @@ opencv-python
 numpy
 pyautogui
 cvzone
-mediapipe==0.10.14
+mediapipe==0.10.33
 tomli; python_version < "3.11"
