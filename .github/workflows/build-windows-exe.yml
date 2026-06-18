@@ -32,7 +32,7 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed --name qrkahand --collect-all cv2 --collect-all cvzone --collect-all mediapipe --collect-all pyautogui mouse.py
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qrkahand-windows-exe
           path: dist/qrkahand.exe
