@@ -18,6 +18,7 @@ The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to c
 - Python 3.12! **REQUIRED**
 - Webcam
 - Linux note: some systems need `python3-tk` and `scrot`
+  - **qrkahand** does *not* work on Wayland, I am very sorry.
 - Windows note: no extra system packages are typically required
 
 ## Setup
