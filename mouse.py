@@ -52,6 +52,8 @@ class GestureConfig:
     scroll_dist: float = 15.0
     rclick_dist: float = 15.0
     super_drag_dist: float = 15.0
+    super_release_dist: float = 40.0
+    super_release_grace_sec: float = 0.15
     drag_unlock_margin_px: float = 22.0
     toggle_window_sec: float = 1.2
     toggle_debounce_sec: float = 0.10
@@ -79,6 +81,7 @@ class AppConfig:
 class ControllerState:
     is_clicking: bool = False
     is_super_held: bool = False
+    super_release_since: float | None = None
     is_right_clicking: bool = False
     is_scrolling: bool = False
     is_clutched: bool = False
@@ -168,6 +171,10 @@ def validate_settings(cfg):
         errors.append("RCLICK_DIST must be > 0")
     if gesture.super_drag_dist <= 0:
         errors.append("SUPER_DRAG_DIST must be > 0")
+    if gesture.super_release_dist < gesture.super_drag_dist:
+        errors.append("SUPER_RELEASE_DIST must be >= SUPER_DRAG_DIST")
+    if gesture.super_release_grace_sec < 0:
+        errors.append("SUPER_RELEASE_GRACE_SEC must be >= 0")
     if gesture.drag_unlock_margin_px < 0:
         errors.append("DRAG_UNLOCK_MARGIN_PX must be >= 0")
 
@@ -231,6 +238,12 @@ def load_config(config_path=CONFIG_FILE):
     cfg.gesture.rclick_dist = float(gesture.get("rclick_dist", cfg.gesture.rclick_dist))
     cfg.gesture.super_drag_dist = float(
         gesture.get("super_drag_dist", cfg.gesture.super_drag_dist)
+    )
+    cfg.gesture.super_release_dist = float(
+        gesture.get("super_release_dist", cfg.gesture.super_release_dist)
+    )
+    cfg.gesture.super_release_grace_sec = float(
+        gesture.get("super_release_grace_sec", cfg.gesture.super_release_grace_sec)
     )
     cfg.gesture.drag_unlock_margin_px = float(
         gesture.get("drag_unlock_margin_px", cfg.gesture.drag_unlock_margin_px)
@@ -365,6 +378,7 @@ def release_drag(state):
     if state.is_super_held:
         pointer.superUp()
         state.is_super_held = False
+    state.super_release_since = None
 
 
 def draw_status(img, text, color, origin, scale=1.0, thickness=3):
@@ -541,19 +555,22 @@ def main():
                         break
                     continue
 
-                if current_pose == "closed":
+                # A window drag ends only on a clear release of the pinky, so
+                # other gesture readings can't interrupt it (the ring finger
+                # sits close to the thumb during a pinky pinch, and curling the
+                # free fingers can read as a closed hand).
+                window_dragging = state.is_clicking and state.is_super_held
+
+                if not window_dragging and current_pose == "closed":
                     state.mode_label = "CLUTCH"
                     draw_status(img, "PAUSED (CLUTCH)", (0, 0, 255), cfg.ui.text_origin_main)
                     release_drag(state)
                     state.is_scrolling = False
                     state.is_clutched = True
 
-                elif dist_mid < cfg.gesture.scroll_dist:
+                elif not window_dragging and dist_mid < cfg.gesture.scroll_dist:
                     state.mode_label = "SCROLL"
                     state.prev_palm = None
-                    if state.is_super_held:
-                        # Don't let SUPER leak into scroll/right-click binds.
-                        release_drag(state)
                     draw_status(img, "SCROLLING", (255, 255, 0), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_mid, y_mid), 15, (255, 255, 0), cv2.FILLED)
 
@@ -595,12 +612,9 @@ def main():
                     cv2.line(img, (0, center_y), (cfg.camera.width - 1, center_y), (255, 255, 255), 1)
                     cv2.line(img, (0, lower_y), (cfg.camera.width - 1, lower_y), (0, 200, 255), 1)
 
-                elif dist_ring < cfg.gesture.rclick_dist:
+                elif not window_dragging and dist_ring < cfg.gesture.rclick_dist:
                     state.mode_label = "RIGHT_CLICK"
                     state.prev_palm = None
-                    if state.is_super_held:
-                        # Don't let SUPER leak into scroll/right-click binds.
-                        release_drag(state)
                     draw_status(img, "RIGHT CLICK", (0, 165, 255), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_ring, y_ring), 15, (0, 165, 255), cv2.FILLED)
 
@@ -617,6 +631,22 @@ def main():
 
                     is_left_pinched = dist_index < cfg.gesture.click_dist
                     is_super_pinched = dist_pinky < cfg.gesture.super_drag_dist
+                    super_releasing = False
+
+                    if window_dragging:
+                        # Hysteresis plus a grace period: the pinky has to be
+                        # clearly apart, for a moment, before the window drops.
+                        is_left_pinched = False
+                        if dist_pinky < cfg.gesture.super_release_dist:
+                            state.super_release_since = None
+                        elif state.super_release_since is None:
+                            state.super_release_since = time.monotonic()
+                        super_releasing = state.super_release_since is not None
+                        is_super_pinched = (
+                            not super_releasing
+                            or time.monotonic() - state.super_release_since
+                            < cfg.gesture.super_release_grace_sec
+                        )
 
                     if state.is_clutched:
                         # Resume from wherever the hand is now, without a jump.
@@ -639,7 +669,7 @@ def main():
                             state.drag_unlocked = False
 
                         if state.is_super_held:
-                            state.mode_label = "SUPER_DRAG"
+                            state.mode_label = "SUPER_RELEASING" if super_releasing else "SUPER_DRAG"
                             cv2.circle(img, (x_pinky, y_pinky), 15, (255, 0, 255), cv2.FILLED)
                         else:
                             state.mode_label = "LEFT_DRAG"
@@ -657,7 +687,10 @@ def main():
                             state.drag_unlocked = True
                             move_cursor(state, glide, cfg, palm_fx, palm_fy)
                         else:
-                            state.mode_label = "SUPER_HOLD" if state.is_super_held else "LEFT_HOLD"
+                            if not state.is_super_held:
+                                state.mode_label = "LEFT_HOLD"
+                            elif not super_releasing:
+                                state.mode_label = "SUPER_HOLD"
 
                         left = int(max(0, state.drag_anchor_x - margin))
                         top = int(max(0, state.drag_anchor_y - margin))

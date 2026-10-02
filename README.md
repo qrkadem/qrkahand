@@ -60,7 +60,7 @@ The app evaluates gestures in this priority order: clutch, scroll, right click, 
 | Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched. Cursor stays still inside a margin box around pinch start, then starts dragging after hand exits the box. |
 | Scroll | Pinch thumb + middle (`dist_mid < SCROLL_DIST`), move hand up/down | Enters scroll mode; vertical motion controls direction and speed |
 | Right click | Pinch thumb + ring (`dist_ring < RCLICK_DIST`) | Triggers right click (rate-limited briefly) |
-| Move window | Pinch thumb + pinky (`dist_pinky < SUPER_DRAG_DIST`) | Holds SUPER + left button while pinched, Hyprland's default window-move bind. Same margin box as left drag. |
+| Move window | Pinch thumb + pinky (`dist_pinky < SUPER_DRAG_DIST`) | Holds SUPER + left button, Hyprland's default window-move bind. Same margin box as left drag. Ends only when the pinky is clearly apart (`SUPER_RELEASE_DIST`) for `SUPER_RELEASE_GRACE_SEC`; other gestures are ignored meanwhile. |
 | Clutch | Close hand (fingers down) | Pauses movement/scroll and releases active left drag so hand can reposition |
 | Toggle app active/paused | Alternate `open -> closed -> open -> closed` quickly | Enables or pauses all mouse actions |
 
@@ -130,6 +130,8 @@ Set `ACCEL_MIN` and `ACCEL_MAX` both to `1.0` to turn acceleration off.
 | `SCROLL_DIST` | `15` | Thumb-middle pinch threshold | Make scroll easier to trigger | Require tighter pinch |
 | `RCLICK_DIST` | `15` | Thumb-ring pinch threshold | Make right click easier to trigger | Require tighter pinch |
 | `SUPER_DRAG_DIST` | `15` | Thumb-pinky pinch threshold | Make window drag easier to trigger | Require tighter pinch |
+| `SUPER_RELEASE_DIST` | `40` | Thumb-pinky distance that counts as letting go of a window drag | Harder to drop by accident | Drop with a smaller release |
+| `SUPER_RELEASE_GRACE_SEC` | `0.15` | How long the pinky must stay apart before the window drops | Ignore longer tracking glitches | Drop sooner after letting go |
 | `DRAG_UNLOCK_MARGIN_PX` | `22` | Half-size of the drag unlock box in camera pixels | Require larger motion before drag starts | Start dragging sooner after pinch |
 
 ### Toggle Timing
