@@ -2,6 +2,8 @@
 
 Control your mouse with hand gestures using a webcam.
 
+> **This is the `hyprland` branch.** It drives the cursor on Hyprland (Wayland) through the `zwlr_virtual_pointer_v1` protocol via [`wayland-automation`](https://pypi.org/project/wayland-automation/), and reads cursor/monitor info from `hyprctl`. For X11/Windows use `main`.
+
 The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to cursor movement, and supports gesture-based click, right-click, scroll, clutch, and pause toggle.
 
 ## What This Project Does
@@ -10,6 +12,7 @@ The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to c
 - Left-clicks and drags with thumb-index pinch
 - Scrolls with thumb-middle pinch and vertical movement
 - Right-clicks with thumb-ring pinch
+- Moves windows with thumb-pinky pinch (SUPER + drag)
 - Supports clutch mode for hand repositioning
 - Toggles full controller active/paused with quick open-close transitions
 
@@ -17,9 +20,9 @@ The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to c
 
 - Python 3.12! **REQUIRED**
 - Webcam
-- Linux note: some systems need `python3-tk` and `scrot`
-  - **qrkahand** does *not* work on Wayland, I am very sorry.
-- Windows note: no extra system packages are typically required
+- Hyprland (Wayland) with `hyprctl` on `PATH`
+- `wtype` (holds SUPER for window dragging)
+  - Other wlroots compositors provide the virtual pointer protocol, but cursor position and monitor layout are read from `hyprctl`, so only Hyprland is supported.
 
 ## Setup
 
@@ -37,18 +40,6 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Optional Linux packages
-
-```bash
-sudo apt update
-sudo apt install -y python3-tk scrot
-```
-
-### 4. Windows notes
-
-- Camera backend selection is automatic on Windows (DirectShow/MSMF fallback).
-- If the wrong camera opens, change `CAMERA_INDEX` in `mouse.py`.
-
 ## Run
 
 ```bash
@@ -61,7 +52,7 @@ The app reads settings from `config.toml` in the project root. If the file is mi
 
 ## Gestures
 
-The app evaluates gestures in this priority order: clutch, scroll, right click, then movement/left click.
+The app evaluates gestures in this priority order: clutch, scroll, right click, then movement/left click/window drag.
 
 | Gesture | How to do it | Result |
 | --- | --- | --- |
@@ -69,6 +60,7 @@ The app evaluates gestures in this priority order: clutch, scroll, right click, 
 | Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched. Cursor stays still inside a margin box around pinch start, then starts dragging after hand exits the box. |
 | Scroll | Pinch thumb + middle (`dist_mid < SCROLL_DIST`), move hand up/down | Enters scroll mode; vertical motion controls direction and speed |
 | Right click | Pinch thumb + ring (`dist_ring < RCLICK_DIST`) | Triggers right click (rate-limited briefly) |
+| Move window | Pinch thumb + pinky (`dist_pinky < SUPER_DRAG_DIST`) | Holds SUPER + left button while pinched, Hyprland's default window-move bind. Same margin box as left drag. |
 | Clutch | Close hand (fingers down) | Pauses movement/scroll and releases active left drag so hand can reposition |
 | Toggle app active/paused | Alternate `open -> closed -> open -> closed` quickly | Enables or pauses all mouse actions |
 
@@ -130,6 +122,7 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 | `CLICK_DIST` | `15` | Thumb-index pinch threshold | Make click easier to trigger | Require tighter pinch |
 | `SCROLL_DIST` | `15` | Thumb-middle pinch threshold | Make scroll easier to trigger | Require tighter pinch |
 | `RCLICK_DIST` | `15` | Thumb-ring pinch threshold | Make right click easier to trigger | Require tighter pinch |
+| `SUPER_DRAG_DIST` | `15` | Thumb-pinky pinch threshold | Make window drag easier to trigger | Require tighter pinch |
 | `DRAG_UNLOCK_MARGIN_PX` | `22` | Half-size of the drag unlock box in camera pixels | Require larger motion before drag starts | Start dragging sooner after pinch |
 
 ### Toggle Timing
@@ -149,10 +142,10 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 | `TEXT_ORIGIN_DIAG` | `(10, 20)` | Diagnostics overlay origin |
 | `SHOW_DIAGNOSTICS` | `true` | Toggle on-screen diagnostics overlay |
 
-### Runtime Setting
+### Cursor Backend (`hyprpointer.py`)
 
-- `pyautogui.PAUSE = 0`
-  - Removes automatic delay between PyAutoGUI actions for lower latency.
+- Cursor speed is scaled to the focused monitor's logical size at startup; the cursor can still travel across every monitor.
+- Pointer events go straight to the compositor with no artificial delay.
 
 ## Suggested Presets
 
@@ -190,7 +183,7 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
   - Lower `SCROLL_GAIN`.
   - Lower `SCROLL_MOMENTUM`.
   - Lower `SCROLL_DECAY`.
-- Windows update rate feels slow:
+- Update rate feels slow:
   - Lower `CAMERA_WIDTH`/`CAMERA_HEIGHT`.
   - Keep `CAMERA_FPS` at `60` (or try `30` if your camera is unstable).
   - Try a different `CAMERA_INDEX`.

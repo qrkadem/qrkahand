@@ -1,6 +1,6 @@
 opencv-python
 numpy
-pyautogui
+wayland-automation==0.2.8
 cvzone
 mediapipe==0.10.14
 tomli; python_version < "3.11"

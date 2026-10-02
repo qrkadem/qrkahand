@@ -27,7 +27,7 @@ jobs:
 
       - name: Build ELF with PyInstaller
         run: |
-          pyinstaller --noconfirm --clean --onefile --name qrkahand --collect-all cv2 --collect-all cvzone --collect-all mediapipe --collect-all pyautogui mouse.py
+          pyinstaller --noconfirm --clean --onefile --name qrkahand --collect-all cv2 --collect-all cvzone --collect-all mediapipe --collect-all wayland_automation mouse.py
 
       - name: Ensure executable bit
         run: chmod +x dist/qrkahand

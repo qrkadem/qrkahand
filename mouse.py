@@ -12,11 +12,10 @@ except ModuleNotFoundError:
 
 import cv2
 import numpy as np
-import pyautogui
+import hyprpointer as pointer
 from cvzone.HandTrackingModule import HandDetector
 
 CONFIG_FILE = "config.toml"
-pyautogui.FAILSAFE = False
 
 @dataclass
 class CameraConfig:
@@ -49,6 +48,7 @@ class GestureConfig:
     click_dist: float = 15.0
     scroll_dist: float = 15.0
     rclick_dist: float = 15.0
+    super_drag_dist: float = 15.0
     drag_unlock_margin_px: float = 22.0
     toggle_window_sec: float = 1.2
     toggle_debounce_sec: float = 0.10
@@ -75,6 +75,7 @@ class AppConfig:
 @dataclass
 class ControllerState:
     is_clicking: bool = False
+    is_super_held: bool = False
     is_right_clicking: bool = False
     is_scrolling: bool = False
     is_clutched: bool = False
@@ -152,6 +153,8 @@ def validate_settings(cfg):
         errors.append("SCROLL_DIST must be > 0")
     if gesture.rclick_dist <= 0:
         errors.append("RCLICK_DIST must be > 0")
+    if gesture.super_drag_dist <= 0:
+        errors.append("SUPER_DRAG_DIST must be > 0")
     if gesture.drag_unlock_margin_px < 0:
         errors.append("DRAG_UNLOCK_MARGIN_PX must be >= 0")
 
@@ -202,6 +205,9 @@ def load_config(config_path=CONFIG_FILE):
     cfg.gesture.click_dist = float(gesture.get("click_dist", cfg.gesture.click_dist))
     cfg.gesture.scroll_dist = float(gesture.get("scroll_dist", cfg.gesture.scroll_dist))
     cfg.gesture.rclick_dist = float(gesture.get("rclick_dist", cfg.gesture.rclick_dist))
+    cfg.gesture.super_drag_dist = float(
+        gesture.get("super_drag_dist", cfg.gesture.super_drag_dist)
+    )
     cfg.gesture.drag_unlock_margin_px = float(
         gesture.get("drag_unlock_margin_px", cfg.gesture.drag_unlock_margin_px)
     )
@@ -232,6 +238,15 @@ def classify_hand_pose(fingers):
     if fingers[1:] == [1, 1, 1, 1]:
         return "open"
     return "neutral"
+
+
+def release_drag(state):
+    if state.is_clicking:
+        pointer.mouseUp()
+        state.is_clicking = False
+    if state.is_super_held:
+        pointer.superUp()
+        state.is_super_held = False
 
 
 def draw_status(img, text, color, origin, scale=1.0, thickness=3):
@@ -288,9 +303,7 @@ def handle_program_toggle(current_pose, state, cfg):
             state.toggle_window_start = 0.0
 
             if not state.program_active:
-                if state.is_clicking:
-                    pyautogui.mouseUp()
-                    state.is_clicking = False
+                release_drag(state)
                 state.is_scrolling = False
                 state.is_right_clicking = False
                 state.scroll_velocity = 0.0
@@ -340,19 +353,18 @@ def configure_camera(cam, cfg):
 
 def main():
     cfg = load_config()
-    pyautogui.PAUSE = 0
 
     cam, backend = open_camera(cfg.camera.index)
     configure_camera(cam, cfg)
 
-    screen_width, screen_height = pyautogui.size()
+    screen_width, screen_height = pointer.size()
     detector = HandDetector(
         detectionCon=cfg.camera.detection_confidence,
         maxHands=cfg.camera.max_hands,
     )
 
     state = ControllerState()
-    mouse_x, mouse_y = pyautogui.position()
+    mouse_x, mouse_y = pointer.position()
     state.ploc_x = mouse_x
     state.ploc_y = mouse_y
     state.fps_last_ts = time.time()
@@ -395,11 +407,13 @@ def main():
                 x_index, y_index = lm_list[8][0], lm_list[8][1]
                 x_mid, y_mid = lm_list[12][0], lm_list[12][1]
                 x_ring, y_ring = lm_list[16][0], lm_list[16][1]
+                x_pinky, y_pinky = lm_list[20][0], lm_list[20][1]
                 x_palm, y_palm = lm_list[9][0], lm_list[9][1]
 
                 dist_index = math.hypot(x_index - x_thumb, y_index - y_thumb)
                 dist_mid = math.hypot(x_mid - x_thumb, y_mid - y_thumb)
                 dist_ring = math.hypot(x_ring - x_thumb, y_ring - y_thumb)
+                dist_pinky = math.hypot(x_pinky - x_thumb, y_pinky - y_thumb)
 
                 cv2.circle(img, (x_palm, y_palm), 8, (255, 255, 255), 2)
 
@@ -426,14 +440,15 @@ def main():
                 if current_pose == "closed":
                     state.mode_label = "CLUTCH"
                     draw_status(img, "PAUSED (CLUTCH)", (0, 0, 255), cfg.ui.text_origin_main)
-                    if state.is_clicking:
-                        pyautogui.mouseUp()
-                        state.is_clicking = False
+                    release_drag(state)
                     state.is_scrolling = False
                     state.is_clutched = True
 
                 elif dist_mid < cfg.gesture.scroll_dist:
                     state.mode_label = "SCROLL"
+                    if state.is_super_held:
+                        # Don't let SUPER leak into scroll/right-click binds.
+                        release_drag(state)
                     draw_status(img, "SCROLLING", (255, 255, 0), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_mid, y_mid), 15, (255, 255, 0), cv2.FILLED)
 
@@ -463,7 +478,7 @@ def main():
                         )
 
                         if abs(state.scroll_velocity) >= 1.0:
-                            pyautogui.scroll(int(round(state.scroll_velocity)))
+                            pointer.scroll(int(round(state.scroll_velocity)))
 
                     # Draw deadzone bounds around a fixed anchor captured at scroll start.
                     deadzone_vis = max(6.0, cfg.scroll.deadzone_px)
@@ -477,11 +492,14 @@ def main():
 
                 elif dist_ring < cfg.gesture.rclick_dist:
                     state.mode_label = "RIGHT_CLICK"
+                    if state.is_super_held:
+                        # Don't let SUPER leak into scroll/right-click binds.
+                        release_drag(state)
                     draw_status(img, "RIGHT CLICK", (0, 165, 255), cfg.ui.text_origin_main)
                     cv2.circle(img, (x_ring, y_ring), 15, (0, 165, 255), cv2.FILLED)
 
                     if not state.is_right_clicking:
-                        pyautogui.click(button="right")
+                        pointer.click(button="right")
                         state.is_right_clicking = True
                         time.sleep(0.3)
 
@@ -492,6 +510,7 @@ def main():
                     state.is_right_clicking = False
 
                     is_left_pinched = dist_index < cfg.gesture.click_dist
+                    is_super_pinched = dist_pinky < cfg.gesture.super_drag_dist
 
                     mapped_x = np.interp(
                         x_palm,
@@ -512,15 +531,17 @@ def main():
                     target_x = mapped_x + state.offset_x
                     target_y = mapped_y + state.offset_y
 
-                    if is_left_pinched:
-                        state.mode_label = "LEFT_DRAG"
-                        cv2.circle(img, (x_index, y_index), 15, (0, 255, 0), cv2.FILLED)
-
+                    if is_left_pinched or is_super_pinched:
                         if not state.is_clicking:
-                            pyautogui.mouseDown()
+                            # SUPER + drag moves windows in Hyprland. The drag
+                            # kind is latched until release.
+                            if is_super_pinched:
+                                pointer.superDown()
+                                state.is_super_held = True
+                            pointer.mouseDown()
                             state.is_clicking = True
                             # Zero smoothing carryover so click/drag starts without glide.
-                            cur_x, cur_y = pyautogui.position()
+                            cur_x, cur_y = pointer.position()
                             state.ploc_x = float(cur_x)
                             state.ploc_y = float(cur_y)
                             state.offset_x = state.ploc_x - mapped_x
@@ -530,6 +551,13 @@ def main():
                             state.drag_anchor_x = x_palm
                             state.drag_anchor_y = y_palm
                             state.drag_unlocked = False
+
+                        if state.is_super_held:
+                            state.mode_label = "SUPER_DRAG"
+                            cv2.circle(img, (x_pinky, y_pinky), 15, (255, 0, 255), cv2.FILLED)
+                        else:
+                            state.mode_label = "LEFT_DRAG"
+                            cv2.circle(img, (x_index, y_index), 15, (0, 255, 0), cv2.FILLED)
 
                         margin = cfg.gesture.drag_unlock_margin_px
                         in_margin = (
@@ -545,10 +573,10 @@ def main():
                             cloc_y = state.ploc_y + (
                                 (target_y - state.ploc_y) / cfg.cursor.smoothing
                             ) * cfg.cursor.mouse_speed
-                            pyautogui.moveTo(cloc_x, cloc_y)
+                            pointer.moveTo(cloc_x, cloc_y)
                             state.ploc_x, state.ploc_y = cloc_x, cloc_y
                         else:
-                            state.mode_label = "LEFT_HOLD"
+                            state.mode_label = "SUPER_HOLD" if state.is_super_held else "LEFT_HOLD"
 
                         left = int(max(0, state.drag_anchor_x - margin))
                         top = int(max(0, state.drag_anchor_y - margin))
@@ -566,8 +594,7 @@ def main():
                     else:
                         just_released_click = False
                         if state.is_clicking:
-                            pyautogui.mouseUp()
-                            state.is_clicking = False
+                            release_drag(state)
                             # Re-anchor mapping at release so smoothing does not rebound.
                             state.offset_x = state.ploc_x - mapped_x
                             state.offset_y = state.ploc_y - mapped_y
@@ -581,7 +608,7 @@ def main():
                             cloc_y = state.ploc_y + (
                                 (target_y - state.ploc_y) / cfg.cursor.smoothing
                             ) * cfg.cursor.mouse_speed
-                            pyautogui.moveTo(cloc_x, cloc_y)
+                            pointer.moveTo(cloc_x, cloc_y)
                             state.ploc_x, state.ploc_y = cloc_x, cloc_y
 
             draw_diagnostics(img, state, cfg)
@@ -590,8 +617,7 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
-        if state.is_clicking:
-            pyautogui.mouseUp()
+        release_drag(state)
         cam.release()
         cv2.destroyAllWindows()
 
