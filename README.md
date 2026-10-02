@@ -56,7 +56,7 @@ The app evaluates gestures in this priority order: clutch, scroll, right click, 
 
 | Gesture | How to do it | Result |
 | --- | --- | --- |
-| Move cursor | Keep hand open/neutral and move hand | Moves cursor from palm position with smoothing and speed scaling |
+| Move cursor | Keep hand open/neutral and move hand | Moves the cursor by how far the palm moves, at the same physical speed on every monitor |
 | Left click / drag | Pinch thumb + index (`dist_index < CLICK_DIST`) | Holds left mouse button while pinched. Cursor stays still inside a margin box around pinch start, then starts dragging after hand exits the box. |
 | Scroll | Pinch thumb + middle (`dist_mid < SCROLL_DIST`), move hand up/down | Enters scroll mode; vertical motion controls direction and speed |
 | Right click | Pinch thumb + ring (`dist_ring < RCLICK_DIST`) | Triggers right click (rate-limited briefly) |
@@ -70,7 +70,7 @@ Edit values in `config.toml`, then rerun the app.
 
 ### Configuration Validation
 
-At startup, configuration values are validated (for example: positive dimensions, smoothing > 0, decay in [0, 1], debounce < toggle window).
+At startup, configuration values are validated (for example: positive dimensions, speed > 0, decay in [0, 1], debounce < toggle window).
 
 If values are invalid, the app exits with a clear configuration error.
 
@@ -101,9 +101,16 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 
 | Constant | Default | Purpose | Raise it to... | Lower it to... |
 | --- | ---: | --- | --- | --- |
-| `FRAME_REDUCTION` | `120` | Mapping margin around frame edges | Reduce edge jitter | Use more frame area |
-| `CURSOR_SMOOTHING` | `4` | Cursor interpolation smoothing | Smooth/slower movement | Faster/snappier movement |
-| `MOUSE_SPEED` | `1.0` | Speed multiplier after smoothing | Increase overall cursor speed | Decrease overall cursor speed |
+| `SPEED_MM` | `1100` | Cursor travel in millimetres when the palm crosses the whole camera frame. Same on every monitor regardless of resolution. | Faster cursor | Slower, finer cursor |
+| `JITTER_CUTOFF_HZ` | `1.0` | Smoothing when the hand is nearly still (One Euro filter) | Less lag at slow speeds | Steadier cursor when holding still |
+| `JITTER_BETA` | `0.03` | How quickly smoothing backs off as the hand speeds up | Less lag on fast moves | Smoother fast moves |
+| `POINTER_HZ` | `0` (auto) | Cursor update rate; `0` uses your fastest monitor's refresh rate | Smoother on high-refresh monitors | Less CPU |
+| `ACCEL_MIN` | `0.5` | Speed multiplier for slow, precise hand movement | Faster fine movement | Finer control |
+| `ACCEL_MAX` | `1.6` | Speed multiplier for fast flicks | Cover more ground on flicks | Calmer flicks |
+| `ACCEL_SPEED` | `1.5` | Hand speed (camera-frame widths per second) where `ACCEL_MAX` is reached | Reach full speed later | Reach full speed sooner |
+| `ACCEL_CURVE` | `[0.6, 0.0, 0.4, 1.0]` | Shape of the ramp from min to max, as CSS `cubic-bezier(x1, y1, x2, y2)`; x values must be in [0, 1] | — | — |
+
+Set `ACCEL_MIN` and `ACCEL_MAX` both to `1.0` to turn acceleration off.
 
 ### Scroll Behavior
 
@@ -144,15 +151,16 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 
 ### Cursor Backend (`hyprpointer.py`)
 
-- Cursor speed is scaled to the focused monitor's logical size at startup; the cursor can still travel across every monitor.
-- Pointer events go straight to the compositor with no artificial delay.
+- Cursor speed is measured in millimetres using each monitor's reported physical size, so mixed resolutions and pixel densities move at the same speed.
+- The camera delivers roughly 30 frames per second, so a separate thread moves the cursor at monitor refresh rate and glides between tracked positions along cubic Bezier curves that carry the cursor's velocity from one frame to the next, so curves stay round instead of turning a corner every frame. This adds about one camera frame of latency.
+- The cursor stays on real monitors and never strays into gaps in the layout.
 
 ## Suggested Presets
 
 ### Smooth and Stable
 
-- `CURSOR_SMOOTHING = 5`
-- `MOUSE_SPEED = 0.9`
+- `SPEED_MM = 950`
+- `JITTER_CUTOFF_HZ = 0.6`
 - `SCROLL_GAIN = 0.28`
 - `SCROLL_MOMENTUM = 0.18`
 - `SCROLL_DECAY = 0.90`
@@ -162,8 +170,8 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 
 ### Fast and Responsive
 
-- `CURSOR_SMOOTHING = 3`
-- `MOUSE_SPEED = 1.15`
+- `SPEED_MM = 1300`
+- `JITTER_BETA = 0.06`
 - `SCROLL_GAIN = 0.45`
 - `SCROLL_MOMENTUM = 0.28`
 - `SCROLL_DECAY = 0.94`
@@ -174,11 +182,13 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 ## Troubleshooting
 
 - Cursor is jumpy:
-  - Increase `CURSOR_SMOOTHING`.
-  - Increase `FRAME_REDUCTION` slightly.
+  - Lower `JITTER_CUTOFF_HZ` (steadier when still).
+  - Lower `JITTER_BETA` (smoother when moving).
+- Cursor lags behind the hand:
+  - Raise `JITTER_BETA`, then `JITTER_CUTOFF_HZ`.
 - Cursor is too fast or too slow:
-  - Raise `MOUSE_SPEED` to speed up.
-  - Lower `MOUSE_SPEED` to slow down.
+  - Raise `SPEED_MM` to speed up.
+  - Lower `SPEED_MM` to slow down.
 - Scroll starts too aggressively:
   - Lower `SCROLL_GAIN`.
   - Lower `SCROLL_MOMENTUM`.

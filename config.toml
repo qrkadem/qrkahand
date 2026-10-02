@@ -7,9 +7,14 @@ detection_confidence = 0.8
 max_hands = 1
 
 [cursor]
-frame_reduction = 120
-smoothing = 4
-mouse_speed = 1.0
+speed_mm = 1100
+jitter_cutoff_hz = 1.0
+jitter_beta = 0.03
+pointer_hz = 0
+accel_min = 0.5
+accel_max = 1.6
+accel_speed = 1.5
+accel_curve = [0.6, 0.0, 0.4, 1.0]
 
 [scroll]
 gain = 0.35

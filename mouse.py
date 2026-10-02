@@ -10,7 +10,6 @@ except ModuleNotFoundError:
     tomllib = importlib.import_module("tomli")
 
 import cv2
-import numpy as np
 import hyprpointer as pointer
 from cvzone.HandTrackingModule import HandDetector
 
@@ -28,9 +27,14 @@ class CameraConfig:
 
 @dataclass
 class CursorConfig:
-    frame_reduction: int = 120
-    smoothing: float = 4.0
-    mouse_speed: float = 1.0
+    speed_mm: float = 1100.0
+    jitter_cutoff_hz: float = 1.0
+    jitter_beta: float = 0.03
+    pointer_hz: float = 0.0
+    accel_min: float = 0.5
+    accel_max: float = 1.6
+    accel_speed: float = 1.5
+    accel_curve: tuple[float, float, float, float] = (0.6, 0.0, 0.4, 1.0)
 
 
 @dataclass
@@ -78,8 +82,11 @@ class ControllerState:
     is_right_clicking: bool = False
     is_scrolling: bool = False
     is_clutched: bool = False
-    offset_x: float = 0.0
-    offset_y: float = 0.0
+    target_x: float = 0.0
+    target_y: float = 0.0
+    prev_palm: tuple[float, float] | None = None
+    palm_filter: "OneEuroFilter | None" = None
+    accel_ease: object = None
     scroll_anchor_y: float = 0.0
     scroll_visual_anchor_y: float = 0.0
     scroll_velocity: float = 0.0
@@ -88,13 +95,12 @@ class ControllerState:
     toggle_transition_count: int = 0
     toggle_window_start: float = 0.0
     last_toggle_transition_ts: float = 0.0
-    ploc_x: float = 0.0
-    ploc_y: float = 0.0
     fps: float = 0.0
     fps_frame_count: int = 0
     fps_last_ts: float = 0.0
     backend_name: str = "unknown"
     capture_label: str = "unknown"
+    pointer_label: str = "unknown"
     mode_label: str = "NO_HAND"
     drag_anchor_x: float = 0.0
     drag_anchor_y: float = 0.0
@@ -128,12 +134,20 @@ def validate_settings(cfg):
     if camera.max_hands < 1:
         errors.append("MAX_HANDS must be >= 1")
 
-    if cursor.frame_reduction < 0:
-        errors.append("FRAME_REDUCTION must be >= 0")
-    if cursor.smoothing <= 0:
-        errors.append("CURSOR_SMOOTHING must be > 0")
-    if cursor.mouse_speed <= 0:
-        errors.append("MOUSE_SPEED must be > 0")
+    if cursor.speed_mm <= 0:
+        errors.append("SPEED_MM must be > 0")
+    if cursor.jitter_cutoff_hz <= 0:
+        errors.append("JITTER_CUTOFF_HZ must be > 0")
+    if cursor.jitter_beta < 0:
+        errors.append("JITTER_BETA must be >= 0")
+    if cursor.pointer_hz < 0:
+        errors.append("POINTER_HZ must be >= 0")
+    if not (0 < cursor.accel_min <= cursor.accel_max):
+        errors.append("ACCEL_MIN must be > 0 and <= ACCEL_MAX")
+    if cursor.accel_speed <= 0:
+        errors.append("ACCEL_SPEED must be > 0")
+    if not (0.0 <= cursor.accel_curve[0] <= 1.0 and 0.0 <= cursor.accel_curve[2] <= 1.0):
+        errors.append("ACCEL_CURVE x values (1st and 3rd) must be in [0, 1]")
 
     if scroll.gain < 0:
         errors.append("SCROLL_GAIN must be >= 0")
@@ -189,9 +203,20 @@ def load_config(config_path=CONFIG_FILE):
     cfg.camera.max_hands = int(camera.get("max_hands", cfg.camera.max_hands))
 
     cursor = data.get("cursor", {})
-    cfg.cursor.frame_reduction = int(cursor.get("frame_reduction", cfg.cursor.frame_reduction))
-    cfg.cursor.smoothing = float(cursor.get("smoothing", cfg.cursor.smoothing))
-    cfg.cursor.mouse_speed = float(cursor.get("mouse_speed", cfg.cursor.mouse_speed))
+    cfg.cursor.speed_mm = float(cursor.get("speed_mm", cfg.cursor.speed_mm))
+    cfg.cursor.jitter_cutoff_hz = float(
+        cursor.get("jitter_cutoff_hz", cfg.cursor.jitter_cutoff_hz)
+    )
+    cfg.cursor.jitter_beta = float(cursor.get("jitter_beta", cfg.cursor.jitter_beta))
+    cfg.cursor.pointer_hz = float(cursor.get("pointer_hz", cfg.cursor.pointer_hz))
+    cfg.cursor.accel_min = float(cursor.get("accel_min", cfg.cursor.accel_min))
+    cfg.cursor.accel_max = float(cursor.get("accel_max", cfg.cursor.accel_max))
+    cfg.cursor.accel_speed = float(cursor.get("accel_speed", cfg.cursor.accel_speed))
+    if "accel_curve" in cursor:
+        curve = cursor["accel_curve"]
+        if not isinstance(curve, (list, tuple)) or len(curve) != 4:
+            raise ValueError("cursor.accel_curve must be a 4-item list")
+        cfg.cursor.accel_curve = tuple(float(v) for v in curve)
 
     scroll = data.get("scroll", {})
     cfg.scroll.gain = float(scroll.get("gain", cfg.scroll.gain))
@@ -231,6 +256,100 @@ def load_config(config_path=CONFIG_FILE):
     return cfg
 
 
+class OneEuroFilter:
+    """One Euro filter (Casiez et al., 2012) for a 2D point.
+
+    Smooths heavily while the hand is nearly still, where jitter shows, and
+    backs off as it speeds up, where lag would show.
+    """
+
+    def __init__(self, min_cutoff, beta, d_cutoff=1.0):
+        self.min_cutoff = min_cutoff
+        self.beta = beta
+        self.d_cutoff = d_cutoff
+        self.reset()
+
+    def reset(self):
+        self._x = None
+        self._dx = (0.0, 0.0)
+        self._t = None
+
+    @property
+    def speed(self):
+        """Smoothed speed of the point, in input units per second."""
+        return math.hypot(*self._dx)
+
+    @staticmethod
+    def _alpha(cutoff, dt):
+        tau = 1.0 / (2 * math.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    def __call__(self, x, y, t):
+        if self._x is None or t <= self._t:
+            self._x, self._t = (float(x), float(y)), t
+            return self._x
+
+        dt = t - self._t
+        self._t = t
+        a_d = self._alpha(self.d_cutoff, dt)
+        dx = ((x - self._x[0]) / dt, (y - self._x[1]) / dt)
+        self._dx = tuple(a_d * d + (1 - a_d) * p for d, p in zip(dx, self._dx))
+
+        a = self._alpha(self.min_cutoff + self.beta * self.speed, dt)
+        self._x = (a * x + (1 - a) * self._x[0], a * y + (1 - a) * self._x[1])
+        return self._x
+
+
+def cubic_bezier(x1, y1, x2, y2):
+    """CSS-style cubic-bezier easing from (0, 0) to (1, 1); returns y for x."""
+
+    def axis(a1, a2, t):
+        u = 1.0 - t
+        return 3 * a1 * u * u * t + 3 * a2 * u * t * t + t * t * t
+
+    def ease(x):
+        # x(t) is monotonic when x1, x2 are in [0, 1], so bisect for t.
+        lo, hi = 0.0, 1.0
+        for _ in range(24):
+            mid = (lo + hi) / 2
+            if axis(x1, x2, mid) < x:
+                lo = mid
+            else:
+                hi = mid
+        return axis(y1, y2, (lo + hi) / 2)
+
+    return ease
+
+
+def accel_gain(cfg, ease, palm_speed):
+    """Speed multiplier for a palm speed in camera px/s.
+
+    Rises along the bezier from ACCEL_MIN when the hand is still to ACCEL_MAX
+    at ACCEL_SPEED frame widths per second, and stays there above it.
+    """
+    x = min(palm_speed / (cfg.cursor.accel_speed * cfg.camera.width), 1.0)
+    return cfg.cursor.accel_min + (cfg.cursor.accel_max - cfg.cursor.accel_min) * ease(x)
+
+
+def move_cursor(state, glide, cfg, palm_x, palm_y):
+    """Move the cursor by the palm's motion since the last frame.
+
+    Speed is in millimetres, so it is the same on monitors of any pixel density,
+    and scaled by the acceleration curve.
+    """
+    if state.prev_palm is not None:
+        px_per_cam_px = (
+            (cfg.cursor.speed_mm / cfg.camera.width)
+            * pointer.px_per_mm_at(state.target_x, state.target_y)
+            * accel_gain(cfg, state.accel_ease, state.palm_filter.speed)
+        )
+        x = state.target_x + (palm_x - state.prev_palm[0]) * px_per_cam_px
+        y = state.target_y + (palm_y - state.prev_palm[1]) * px_per_cam_px
+        state.target_x, state.target_y = pointer.clamp_to_monitors(x, y)
+        glide.set_target(state.target_x, state.target_y)
+    state.prev_palm = (palm_x, palm_y)
+
+
 def classify_hand_pose(fingers):
     if fingers[1:] == [0, 0, 0, 0]:
         return "closed"
@@ -260,6 +379,7 @@ def draw_diagnostics(img, state, cfg):
         f"FPS: {state.fps:.1f}",
         f"Backend: {state.backend_name}",
         f"Capture: {state.capture_label}",
+        f"Pointer: {state.pointer_label}",
         f"Mode: {state.mode_label}",
         f"Active: {'yes' if state.program_active else 'no'}",
     ]
@@ -340,16 +460,19 @@ def main():
     cam, backend = open_camera(cfg.camera.index)
     configure_camera(cam, cfg)
 
-    screen_width, screen_height = pointer.size()
     detector = HandDetector(
         detectionCon=cfg.camera.detection_confidence,
         maxHands=cfg.camera.max_hands,
     )
 
+    pointer_hz = cfg.cursor.pointer_hz or pointer.max_refresh_hz()
+    glide = pointer.Glide(pointer_hz)
+
     state = ControllerState()
-    mouse_x, mouse_y = pointer.position()
-    state.ploc_x = mouse_x
-    state.ploc_y = mouse_y
+    state.target_x, state.target_y = glide.snap()
+    state.palm_filter = OneEuroFilter(cfg.cursor.jitter_cutoff_hz, cfg.cursor.jitter_beta)
+    state.accel_ease = cubic_bezier(*cfg.cursor.accel_curve)
+    state.pointer_label = f"{pointer_hz:.0f} Hz"
     state.fps_last_ts = time.time()
     state.backend_name = {
         cv2.CAP_V4L2: "V4L2",
@@ -389,6 +512,7 @@ def main():
                 x_ring, y_ring = lm_list[16][0], lm_list[16][1]
                 x_pinky, y_pinky = lm_list[20][0], lm_list[20][1]
                 x_palm, y_palm = lm_list[9][0], lm_list[9][1]
+                palm_fx, palm_fy = state.palm_filter(x_palm, y_palm, time.monotonic())
 
                 dist_index = math.hypot(x_index - x_thumb, y_index - y_thumb)
                 dist_mid = math.hypot(x_mid - x_thumb, y_mid - y_thumb)
@@ -426,6 +550,7 @@ def main():
 
                 elif dist_mid < cfg.gesture.scroll_dist:
                     state.mode_label = "SCROLL"
+                    state.prev_palm = None
                     if state.is_super_held:
                         # Don't let SUPER leak into scroll/right-click binds.
                         release_drag(state)
@@ -472,6 +597,7 @@ def main():
 
                 elif dist_ring < cfg.gesture.rclick_dist:
                     state.mode_label = "RIGHT_CLICK"
+                    state.prev_palm = None
                     if state.is_super_held:
                         # Don't let SUPER leak into scroll/right-click binds.
                         release_drag(state)
@@ -492,24 +618,10 @@ def main():
                     is_left_pinched = dist_index < cfg.gesture.click_dist
                     is_super_pinched = dist_pinky < cfg.gesture.super_drag_dist
 
-                    mapped_x = np.interp(
-                        x_palm,
-                        (cfg.cursor.frame_reduction, cfg.camera.width - cfg.cursor.frame_reduction),
-                        (0, screen_width),
-                    )
-                    mapped_y = np.interp(
-                        y_palm,
-                        (cfg.cursor.frame_reduction, cfg.camera.height - cfg.cursor.frame_reduction),
-                        (0, screen_height),
-                    )
-
                     if state.is_clutched:
-                        state.offset_x = state.ploc_x - mapped_x
-                        state.offset_y = state.ploc_y - mapped_y
+                        # Resume from wherever the hand is now, without a jump.
+                        state.prev_palm = None
                         state.is_clutched = False
-
-                    target_x = mapped_x + state.offset_x
-                    target_y = mapped_y + state.offset_y
 
                     if is_left_pinched or is_super_pinched:
                         if not state.is_clicking:
@@ -518,16 +630,10 @@ def main():
                             if is_super_pinched:
                                 pointer.superDown()
                                 state.is_super_held = True
+                            # Press where the cursor is, not where it's gliding to.
+                            state.target_x, state.target_y = glide.snap()
                             pointer.mouseDown()
                             state.is_clicking = True
-                            # Zero smoothing carryover so click/drag starts without glide.
-                            cur_x, cur_y = pointer.position()
-                            state.ploc_x = float(cur_x)
-                            state.ploc_y = float(cur_y)
-                            state.offset_x = state.ploc_x - mapped_x
-                            state.offset_y = state.ploc_y - mapped_y
-                            target_x = mapped_x + state.offset_x
-                            target_y = mapped_y + state.offset_y
                             state.drag_anchor_x = x_palm
                             state.drag_anchor_y = y_palm
                             state.drag_unlocked = False
@@ -546,15 +652,10 @@ def main():
                         )
 
                         if state.drag_unlocked or not in_margin:
+                            # prev_palm is frozen while locked, so the first move
+                            # covers everything since the pinch started.
                             state.drag_unlocked = True
-                            cloc_x = state.ploc_x + (
-                                (target_x - state.ploc_x) / cfg.cursor.smoothing
-                            ) * cfg.cursor.mouse_speed
-                            cloc_y = state.ploc_y + (
-                                (target_y - state.ploc_y) / cfg.cursor.smoothing
-                            ) * cfg.cursor.mouse_speed
-                            pointer.moveTo(cloc_x, cloc_y)
-                            state.ploc_x, state.ploc_y = cloc_x, cloc_y
+                            move_cursor(state, glide, cfg, palm_fx, palm_fy)
                         else:
                             state.mode_label = "SUPER_HOLD" if state.is_super_held else "LEFT_HOLD"
 
@@ -572,24 +673,17 @@ def main():
                             cv2.FILLED,
                         )
                     else:
-                        just_released_click = False
                         if state.is_clicking:
                             release_drag(state)
-                            # Re-anchor mapping at release so smoothing does not rebound.
-                            state.offset_x = state.ploc_x - mapped_x
-                            state.offset_y = state.ploc_y - mapped_y
-                            just_released_click = True
+                            # Opening the pinch shifts the palm; don't move on it.
+                            state.prev_palm = None
                         state.drag_unlocked = True
+                        move_cursor(state, glide, cfg, palm_fx, palm_fy)
 
-                        if not just_released_click:
-                            cloc_x = state.ploc_x + (
-                                (target_x - state.ploc_x) / cfg.cursor.smoothing
-                            ) * cfg.cursor.mouse_speed
-                            cloc_y = state.ploc_y + (
-                                (target_y - state.ploc_y) / cfg.cursor.smoothing
-                            ) * cfg.cursor.mouse_speed
-                            pointer.moveTo(cloc_x, cloc_y)
-                            state.ploc_x, state.ploc_y = cloc_x, cloc_y
+            else:
+                state.prev_palm = None
+                state.palm_filter.reset()
+                glide.pause()
 
             draw_diagnostics(img, state, cfg)
 
@@ -597,6 +691,7 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
+        glide.stop()
         release_drag(state)
         cam.release()
         cv2.destroyAllWindows()
