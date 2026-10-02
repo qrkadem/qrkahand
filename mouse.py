@@ -16,7 +16,7 @@ import pyautogui
 from cvzone.HandTrackingModule import HandDetector
 
 CONFIG_FILE = "config.toml"
-
+pyautogui.FAILSAFE = False
 
 @dataclass
 class CameraConfig:
