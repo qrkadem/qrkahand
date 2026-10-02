@@ -4,7 +4,6 @@ width = 640
 height = 480
 fps = 60
 detection_confidence = 0.8
-max_hands = 1
 
 [cursor]
 speed_mm = 1100

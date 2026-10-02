@@ -22,7 +22,6 @@ class CameraConfig:
     height: int = 480
     fps: int = 60
     detection_confidence: float = 0.8
-    max_hands: int = 1
 
 
 @dataclass
@@ -134,8 +133,6 @@ def validate_settings(cfg):
         errors.append("CAMERA_FPS must be > 0")
     if not (0.0 < camera.detection_confidence <= 1.0):
         errors.append("DETECTION_CONFIDENCE must be in (0, 1]")
-    if camera.max_hands < 1:
-        errors.append("MAX_HANDS must be >= 1")
 
     if cursor.speed_mm <= 0:
         errors.append("SPEED_MM must be > 0")
@@ -207,7 +204,6 @@ def load_config(config_path=CONFIG_FILE):
     cfg.camera.detection_confidence = float(
         camera.get("detection_confidence", cfg.camera.detection_confidence)
     )
-    cfg.camera.max_hands = int(camera.get("max_hands", cfg.camera.max_hands))
 
     cursor = data.get("cursor", {})
     cfg.cursor.speed_mm = float(cursor.get("speed_mm", cfg.cursor.speed_mm))
@@ -476,7 +472,7 @@ def main():
 
     detector = HandDetector(
         detectionCon=cfg.camera.detection_confidence,
-        maxHands=cfg.camera.max_hands,
+        maxHands=1,
     )
 
     pointer_hz = cfg.cursor.pointer_hz or pointer.max_refresh_hz()

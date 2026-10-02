@@ -95,7 +95,6 @@ You can disable this via `ui.show_diagnostics = false` in `config.toml`.
 | `CAMERA_HEIGHT` | `480` | Capture height | Improve detail (higher CPU) | Reduce CPU and latency |
 | `CAMERA_FPS` | `60` | Target camera FPS hint | Request faster updates (if camera supports it) | Reduce CPU use |
 | `DETECTION_CONFIDENCE` | `0.8` | Hand detection threshold | Reduce false positives | Detect more aggressively |
-| `MAX_HANDS` | `1` | Hands tracked | Track both hands | Keep behavior stable/simple |
 
 ### Cursor Movement
 
