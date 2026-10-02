@@ -2,7 +2,7 @@
 
 Control your mouse with hand gestures using a webcam.
 
-> **This is the `hyprland` branch.** It drives the cursor on Hyprland (Wayland) through the `zwlr_virtual_pointer_v1` protocol via [`wayland-automation`](https://pypi.org/project/wayland-automation/), and reads cursor/monitor info from `hyprctl`. For X11/Windows use `main`.
+> **This is the `hyprland` branch.** It drives the cursor on Hyprland (Wayland) through the `zwlr_virtual_pointer_v1` protocol via [`wayland-automation`](https://pypi.org/project/wayland-automation/), and reads cursor/monitor info from `hyprctl`. For X11 or Windows use `main`.
 
 The app uses MediaPipe hand landmarks (via cvzone), maps your palm position to cursor movement, and supports gesture-based click, right-click, scroll, clutch, and pause toggle.
 

@@ -1,6 +1,5 @@
 import math
 import os
-import platform
 import time
 import importlib
 from dataclasses import dataclass, field
@@ -317,16 +316,7 @@ def handle_program_toggle(current_pose, state, cfg):
 
 
 def open_camera(camera_index):
-    system = platform.system()
-    if system == "Windows":
-        # Prefer low-latency backends first on Windows.
-        backends = [cv2.CAP_DSHOW, cv2.CAP_ANY, cv2.CAP_MSMF]
-    elif system == "Linux":
-        backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
-    elif system == "Darwin":
-        backends = [cv2.CAP_AVFOUNDATION, cv2.CAP_ANY]
-    else:
-        backends = [cv2.CAP_ANY]
+    backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
 
     for backend in backends:
         cam = cv2.VideoCapture(camera_index, backend)
@@ -338,17 +328,10 @@ def open_camera(camera_index):
 
 
 def configure_camera(cam, cfg):
-    system = platform.system()
-
-    # Common capture settings.
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.camera.width)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.camera.height)
     cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cam.set(cv2.CAP_PROP_FPS, cfg.camera.fps)
-
-    if system == "Windows":
-        # MJPG often improves FPS and latency on USB webcams in Windows.
-        cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
 
 
 def main():
@@ -369,11 +352,8 @@ def main():
     state.ploc_y = mouse_y
     state.fps_last_ts = time.time()
     state.backend_name = {
-        getattr(cv2, "CAP_DSHOW", -1): "DSHOW",
-        getattr(cv2, "CAP_MSMF", -2): "MSMF",
-        getattr(cv2, "CAP_V4L2", -3): "V4L2",
-        getattr(cv2, "CAP_AVFOUNDATION", -4): "AVFOUNDATION",
-        getattr(cv2, "CAP_ANY", -5): "ANY",
+        cv2.CAP_V4L2: "V4L2",
+        cv2.CAP_ANY: "ANY",
     }.get(backend, str(backend))
     state.capture_label = f"{cfg.camera.width}x{cfg.camera.height}@{cfg.camera.fps}"
 
